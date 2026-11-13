@@ -97,12 +97,7 @@ public final class NetworkSecurity {
         }, Optional.of(directionOf(message)));
     }
 
-    /**
-     * KhaosKorps fork (gap P1): the direction a message travels, from its executing side. Forge
-     * checks a registered direction before decoding (IndexedMessageCodec.consume), so a
-     * client-bound message sent by a client is refused before its lists are allocated.
-     * Local to each side: nothing on the wire changes, so 1.15.2 clients are unaffected.
-     */
+    /** KhaosKorps fork (gap P6): how a failed message handler is logged. */
     private static void logHandlerFailure(String what, Throwable cause) {
         Main.LOGGER.error("[Recruits] Handling {} failed", what, cause);
     }
@@ -112,6 +107,12 @@ public final class NetworkSecurity {
         return sender == null ? "an unknown sender" : sender.getScoreboardName();
     }
 
+    /**
+     * KhaosKorps fork (gap P1): the direction a message travels, from its executing side. Forge
+     * checks a registered direction before decoding (IndexedMessageCodec.consume), so a
+     * client-bound message sent by a client is refused before its lists are allocated.
+     * Local to each side: nothing on the wire changes, so 1.15.2 clients are unaffected.
+     */
     private static NetworkDirection directionOf(Class<? extends Message<?>> message) {
         try {
             Dist side = message.getDeclaredConstructor().newInstance().getExecutingSide();

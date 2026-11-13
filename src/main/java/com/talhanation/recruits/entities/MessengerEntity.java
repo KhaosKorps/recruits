@@ -439,7 +439,9 @@ public class MessengerEntity extends AbstractChunkLoaderEntity implements ICompa
 
                     if(isTreatyMessenger() && treatyNotAccepted){
                         treatyNotAccepted = false;
-                        this.getOwner().sendSystemMessage(MESSENGER_ARRIVED_TARGET_PLAYER_NOT_ACCEPTED());
+                        // KhaosKorps fork: the owner may be offline or in another dimension, as handled just above;
+                        // without this check the null owner threw in this tick and stopped the server.
+                        if(this.getOwner() != null) this.getOwner().sendSystemMessage(MESSENGER_ARRIVED_TARGET_PLAYER_NOT_ACCEPTED());
                     }
                 }
             }

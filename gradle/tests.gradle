@@ -1,0 +1,64 @@
+// KhaosKorps fork: the test harness.
+//
+// - JUnit 5 in the standard `test` source set, for plain classes the fork adds.
+// - Forge GameTests in their own `gametest` source set (src/gametest), kept out of the
+//   release jar. They run headless with `gradlew runGameTestServer`, whose exit code is the
+//   number of failed required tests, and in the dev client with `/test run <name>`.
+//
+// Kept in this one file so build.gradle carries a single `apply from:` line.
+
+repositories {
+    mavenCentral()
+}
+
+sourceSets {
+    gametest {
+        // Gradle's default folders for this name: src/gametest/java and src/gametest/resources.
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+configurations {
+    gametestImplementation.extendsFrom implementation
+    gametestRuntimeOnly.extendsFrom runtimeOnly
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
+}
+
+test {
+    useJUnitPlatform()
+    // Under build/, so anything a test writes (Minecraft code opens logs/) stays out of the source tree.
+    workingDir = project.file('build/junit-run')
+    doFirst { workingDir.mkdirs() }
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
+}
+
+minecraft {
+    runs {
+        client {
+            mods { recruits { source sourceSets.gametest } }
+        }
+        server {
+            mods { recruits { source sourceSets.gametest } }
+        }
+        gameTestServer {
+            // Under build/, so it is git-ignored, `clean` removes it, and the dev world in run/ is untouched.
+            workingDirectory project.file('build/gametest-run')
+            property 'forge.logging.console.level', 'info'
+            property 'forge.enabledGameTestNamespaces', 'recruits'
+            mods {
+                recruits {
+                    source sourceSets.main
+                    source sourceSets.gametest
+                }
+            }
+        }
+    }
+}

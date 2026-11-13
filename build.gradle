@@ -161,3 +161,6 @@ shadowJar {
 reobf {
     shadowJar {}
 }
+
+// KhaosKorps fork: the test harness lives in its own file, so this is the only line it adds here.
+apply from: 'gradle/tests.gradle'

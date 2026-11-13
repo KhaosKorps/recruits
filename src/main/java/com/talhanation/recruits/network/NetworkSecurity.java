@@ -4,6 +4,7 @@ import com.talhanation.recruits.FactionEvents;
 import com.talhanation.recruits.Main;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.entities.MessengerEntity;
+import com.talhanation.recruits.khaoskorps.HandlerFailures;
 import com.talhanation.recruits.world.RecruitsPlayerInfo;
 import com.talhanation.recruits.world.RecruitsFaction;
 import com.talhanation.recruits.world.RecruitsGroup;
@@ -76,19 +77,21 @@ public final class NetworkSecurity {
                     context.setPacketHandled(true);
                     return;
                 }
-                context.enqueueWork(() -> msg.executeClientSide(context));
+                // KhaosKorps fork (gap P6): a handler that throws is logged instead of vanishing.
+                HandlerFailures.reportIfFailed(context.enqueueWork(() -> msg.executeClientSide(context)),
+                        () -> msg.getClass().getSimpleName() + " on the client", NetworkSecurity::logHandlerFailure);
                 context.setPacketHandled(true);
             } else if (msg.getExecutingSide().equals(Dist.DEDICATED_SERVER)) {
                 if (!arrivedOnServer) {
                     context.setPacketHandled(true);
                     return;
                 }
-                context.enqueueWork(() -> {
+                HandlerFailures.reportIfFailed(context.enqueueWork(() -> {
                     ServerPlayer sender = context.getSender();
                     if (sender == null) return;
                     if (!allowPacket(sender)) return;
                     msg.executeServerSide(context);
-                });
+                }), () -> msg.getClass().getSimpleName() + " from " + senderName(context), NetworkSecurity::logHandlerFailure);
                 context.setPacketHandled(true);
             }
         }, Optional.of(directionOf(message)));
@@ -100,6 +103,15 @@ public final class NetworkSecurity {
      * client-bound message sent by a client is refused before its lists are allocated.
      * Local to each side: nothing on the wire changes, so 1.15.2 clients are unaffected.
      */
+    private static void logHandlerFailure(String what, Throwable cause) {
+        Main.LOGGER.error("[Recruits] Handling {} failed", what, cause);
+    }
+
+    private static String senderName(NetworkEvent.Context context) {
+        ServerPlayer sender = context.getSender();
+        return sender == null ? "an unknown sender" : sender.getScoreboardName();
+    }
+
     private static NetworkDirection directionOf(Class<? extends Message<?>> message) {
         try {
             Dist side = message.getDeclaredConstructor().newInstance().getExecutingSide();

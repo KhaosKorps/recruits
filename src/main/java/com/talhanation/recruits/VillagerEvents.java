@@ -233,17 +233,27 @@ public class VillagerEvents {
     }
 
     public static void createHiredRecruitFromVillager(ServerLevel serverLevel, Villager villager, EntityType<? extends AbstractRecruitEntity> recruitType, Player player, RecruitsGroup group){
+        createHiredRecruitFromVillager(serverLevel, villager, recruitType, player, group, -1);
+    }
+
+    /**
+     * @param price Preis in Währung; {@code -1} = Preis des Recruits ({@code getCost()}).
+     * @return true, wenn angeheuert wurde.
+     */
+    public static boolean createHiredRecruitFromVillager(ServerLevel serverLevel, Villager villager, EntityType<? extends AbstractRecruitEntity> recruitType, Player player, RecruitsGroup group, int price){
         AbstractRecruitEntity abstractRecruit = recruitType.create(villager.getCommandSenderWorld());
-        if(abstractRecruit == null) return;
+        if(abstractRecruit == null) return false;
 
         abstractRecruit.initSpawn();
+        if(price >= 0) abstractRecruit.setCost(price);
         AbstractRecruitEntity.applyVariantFromVillager(abstractRecruit, villager);
 
         Component name = villager.getCustomName();
 
         if(name != null && !name.getString().isEmpty()) abstractRecruit.setCustomName(name);
 
-        if (CommandEvents.handleRecruiting(player, group, abstractRecruit, false)) {
+        int cost = price >= 0 ? price : abstractRecruit.getCost();
+        if (CommandEvents.handleRecruiting(player, group, abstractRecruit, cost, false)) {
             abstractRecruit.copyPosition(villager);
 
             abstractRecruit.setFollowState(1);
@@ -267,16 +277,27 @@ public class VillagerEvents {
             villager.releasePoi(MemoryModuleType.HOME);
             villager.releasePoi(MemoryModuleType.MEETING_POINT);
             villager.discard();
+            return true;
         }
+        return false;
     }
 
     public static void spawnHiredRecruit(ServerLevel serverLevel, EntityType<? extends AbstractRecruitEntity> recruitType, Player player, RecruitsGroup group){
+        spawnHiredRecruit(serverLevel, recruitType, player, group, -1);
+    }
+
+    /**
+     * @param price Preis in Währung; {@code -1} = Preis des Recruits ({@code getCost()}).
+     * @return true, wenn angeheuert wurde.
+     */
+    public static boolean spawnHiredRecruit(ServerLevel serverLevel, EntityType<? extends AbstractRecruitEntity> recruitType, Player player, RecruitsGroup group, int price){
         AbstractRecruitEntity abstractRecruit = recruitType.create(player.getCommandSenderWorld());
-        if(abstractRecruit == null) return;
+        if(abstractRecruit == null) return false;
 
         abstractRecruit.initSpawn();
 
-        if (CommandEvents.handleRecruiting(player, group, abstractRecruit, false)) {
+        int cost = price >= 0 ? price : abstractRecruit.getCost();
+        if (CommandEvents.handleRecruiting(player, group, abstractRecruit, cost, false)) {
             abstractRecruit.copyPosition(player);
 
             abstractRecruit.setFollowState(1);
@@ -290,7 +311,9 @@ public class VillagerEvents {
                 }
                 companion.applyRecruitValues(abstractRecruit);
             }
+            return true;
         }
+        return false;
     }
 
     @SubscribeEvent

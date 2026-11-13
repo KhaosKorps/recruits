@@ -3,6 +3,7 @@ package com.talhanation.recruits.network;
 import com.talhanation.recruits.Main;
 import com.talhanation.recruits.RecruitEvents;
 import com.talhanation.recruits.VillagerEvents;
+import com.talhanation.recruits.config.RecruitsServerConfig;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.entities.VillagerNobleEntity;
 import com.talhanation.recruits.world.RecruitsGroup;
@@ -14,6 +15,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.network.NetworkEvent;
@@ -81,23 +83,27 @@ public class MessageHireFromNobleVillager implements Message<MessageHireFromNobl
         RecruitsGroup group = RecruitEvents.recruitsGroupsManager.getGroup(groupUUID);
         if(group == null || !NetworkSecurity.canManageGroup(player, group)) return;
 
-        boolean hired = false;
-        if(this.needsVillager){
-            Villager villager = player.getCommandSenderWorld().getEntitiesOfClass(
+        @SuppressWarnings("unchecked")
+        EntityType<? extends AbstractRecruitEntity> recruitType = (EntityType<? extends AbstractRecruitEntity>) optionalType.get();
+
+        // KhaosKorps fork (gap P3), from upstream's 772085e4: the server config decides whether a villager is
+        // needed, not the client's flag; the noble's trade price is charged; the trade is used only when the hire
+        // happened. Upstream's reputation-based price (its village system) isn't ported, so the price is the trade's.
+        boolean hired;
+        // Die Config entscheidet, nicht das Flag vom Client.
+        if(RecruitsServerConfig.NobleVillagerNeedsVillagers.get()){
+            Villager villager = serverLevel.getEntitiesOfClass(
                     Villager.class,
                     player.getBoundingBox().inflate(32.0D),
-                    v -> v.getUUID().equals(this.villagerUUID) && v.isAlive()
+                    v -> v.getUUID().equals(this.villagerUUID) && v.isAlive() && !v.isBaby()
+                            && v.getVillagerData().getProfession().equals(VillagerProfession.NONE)
             ).stream().findAny().orElse(null);
-            if(villager != null) {
-                // KhaosKorps port: the priced, boolean-returning hire methods arrive upstream in later commits (b9ffdb25, 772085e4).
-                // The 1.15.2 methods charge the recruit's own cost, as the release does, and the trade counts as before.
-                VillagerEvents.createHiredRecruitFromVillager(serverLevel, villager, (EntityType<? extends AbstractRecruitEntity>) optionalType.get(), player, group);
-                hired = true;
-            }
+            if(villager == null) return;
+
+            hired = VillagerEvents.createHiredRecruitFromVillager(serverLevel, villager, recruitType, player, group, trade.cost);
         }
         else{
-            VillagerEvents.spawnHiredRecruit(serverLevel, (EntityType<? extends AbstractRecruitEntity>) optionalType.get(), player, group);
-            hired = true;
+            hired = VillagerEvents.spawnHiredRecruit(serverLevel, recruitType, player, group, trade.cost);
         }
 
         if(hired) villagerNoble.doTrade(this.resource);

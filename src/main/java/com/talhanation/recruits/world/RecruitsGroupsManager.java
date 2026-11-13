@@ -2,6 +2,7 @@ package com.talhanation.recruits.world;
 
 import com.talhanation.recruits.Main;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
+import com.talhanation.recruits.khaoskorps.GroupRedirects;
 import com.talhanation.recruits.network.MessageToClientUpdateGroups;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -26,6 +27,9 @@ public class RecruitsGroupsManager {
         }
 
         redirects.putAll(data.getRedirects());
+        // KhaosKorps fork (gap P2): a group merged into itself before merges were guarded saved a looping redirect.
+        int brokenLoops = GroupRedirects.breakLoops(redirects);
+        if (brokenLoops > 0) Main.LOGGER.warn("[Recruits] Removed {} looping group redirect(s) from the saved groups data, left by merging a group into itself.", brokenLoops);
         recruitRedirects.putAll(data.getRecruitRedirects());
     }
 
@@ -184,11 +188,15 @@ public class RecruitsGroupsManager {
     }
 
     public UUID resolveGroup(UUID uuid) {
-        while (redirects.containsKey(uuid)) {
-            uuid = redirects.get(uuid);
-        }
-        return uuid;
+        // KhaosKorps fork (gap P2): bounded, so a looping redirect can't hang the server thread.
+        return GroupRedirects.resolve(redirects, uuid, () -> {
+            if (!redirectLoopLogged) {
+                redirectLoopLogged = true;
+                Main.LOGGER.error("[Recruits] Group redirects loop at {}; using that group as it is. Further loops are not logged.", uuid);
+            }
+        });
     }
+    private boolean redirectLoopLogged;
 
     public UUID resolveRecruit(UUID recruitUUID, UUID fallbackGroupUUID) {
         if (recruitRedirects.containsKey(recruitUUID)) {

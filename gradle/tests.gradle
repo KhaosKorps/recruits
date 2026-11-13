@@ -22,6 +22,8 @@ sourceSets {
 configurations {
     gametestImplementation.extendsFrom implementation
     gametestRuntimeOnly.extendsFrom runtimeOnly
+    // corelib's API is a `shadow` dependency of the main code; its runtime jar comes through runtimeOnly.
+    gametestCompileOnly.extendsFrom shadow
 }
 
 dependencies {

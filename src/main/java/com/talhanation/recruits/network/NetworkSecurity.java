@@ -12,6 +12,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.scores.Team;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkEvent;
 import net.minecraftforge.network.simple.SimpleChannel;
 
@@ -19,6 +20,7 @@ import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -89,7 +91,22 @@ public final class NetworkSecurity {
                 });
                 context.setPacketHandled(true);
             }
-        });
+        }, Optional.of(directionOf(message)));
+    }
+
+    /**
+     * KhaosKorps fork (gap P1): the direction a message travels, from its executing side. Forge
+     * checks a registered direction before decoding (IndexedMessageCodec.consume), so a
+     * client-bound message sent by a client is refused before its lists are allocated.
+     * Local to each side: nothing on the wire changes, so 1.15.2 clients are unaffected.
+     */
+    private static NetworkDirection directionOf(Class<? extends Message<?>> message) {
+        try {
+            Dist side = message.getDeclaredConstructor().newInstance().getExecutingSide();
+            return side == Dist.CLIENT ? NetworkDirection.PLAY_TO_CLIENT : NetworkDirection.PLAY_TO_SERVER;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Registering " + message.getName() + ": can't create it to read its executing side", e);
+        }
     }
 
     // ------------------------------------------------------------------

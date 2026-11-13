@@ -35,8 +35,9 @@ public class MessageDisbandGroup implements Message<MessageDisbandGroup> {
     public void executeServerSide(NetworkEvent.Context context) {
         ServerPlayer player = Objects.requireNonNull(context.getSender());
         RecruitsGroup group = RecruitEvents.recruitsGroupsManager.getGroup(groupUUID);
-        if(group == null) return;
+        if(group == null || !NetworkSecurity.canManageGroup(player, group)) return;
 
+        // KhaosKorps port: upstream's markMembersForDisband arrives in a later commit (b9ffdb25), so the 1.15.2 call stays.
         group.setDisbandContext(new RecruitsGroup.DisbandContext(true, keepTeam, true));
 
         RecruitEvents.recruitsGroupsManager.broadCastGroupsToPlayer(player);

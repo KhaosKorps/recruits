@@ -40,17 +40,19 @@ public class MessageMountEntity implements Message<MessageMountEntity> {
         List<Entity> entityList = player.getCommandSenderWorld().getEntitiesOfClass(
                 Entity.class,
                 player.getBoundingBox().inflate(100),
-                (mount) -> mount.getUUID().equals(target) && RecruitsServerConfig.MountWhiteList.get().contains(mount.getEncodeId())
-                        || SmallShips.isSmallShip(mount)
-                        || SiegeWeapon.isSiegeWeapon(mount)
+                // Brackets matter: the target UUID must always match, the type check is the OR part.
+                (mount) -> mount.getUUID().equals(target)
+                        && (RecruitsServerConfig.MountWhiteList.get().contains(mount.getEncodeId())
+                            || SmallShips.isSmallShip(mount)
+                            || SiegeWeapon.isSiegeWeapon(mount))
         );
         if (entityList.isEmpty()) return;
 
         player.getCommandSenderWorld().getEntitiesOfClass(
                 AbstractRecruitEntity.class,
                 player.getBoundingBox().inflate(100),
-                (recruit) -> recruit.isEffectedByCommand(uuid, group)
-        ).forEach((recruit) -> CommandEvents.onMountButton(uuid, recruit, target, group));
+                (recruit) -> recruit.isEffectedByCommand(player.getUUID(), group)
+        ).forEach((recruit) -> CommandEvents.onMountButton(player.getUUID(), recruit, target, group));
     }
 
     public MessageMountEntity fromBytes(FriendlyByteBuf buf) {

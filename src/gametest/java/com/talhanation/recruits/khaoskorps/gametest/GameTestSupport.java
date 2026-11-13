@@ -15,6 +15,10 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import io.netty.channel.embedded.EmbeddedChannel;
+import net.minecraftforge.network.NetworkDirection;
+import net.minecraftforge.network.NetworkEvent;
+
+import java.lang.reflect.Constructor;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.pathfinder.Path;
@@ -80,8 +84,10 @@ public final class GameTestSupport {
      */
     public static ServerPlayer owner(GameTestHelper helper, double x, double y, double z) {
         ServerLevel level = helper.getLevel();
+        // A unique name: scoreboard teams list their members by name.
+        UUID id = UUID.randomUUID();
         ServerPlayer owner = new ServerPlayer(level.getServer(), level,
-                new GameProfile(UUID.randomUUID(), "khaos-test-owner"));
+                new GameProfile(id, "kkt" + id.toString().substring(0, 8)));
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
         EmbeddedChannel channel = new EmbeddedChannel(connection);
         channel.attr(Connection.ATTRIBUTE_PROTOCOL).set(ConnectionProtocol.PLAY);
@@ -90,6 +96,23 @@ public final class GameTestSupport {
         owner.moveTo(at.x, at.y, at.z, 0.0F, 0.0F);
         level.addNewPlayer(owner);
         return owner;
+    }
+
+    /**
+     * A network context that reports {@code sender} as the sender of a client-to-server message,
+     * so a test can call a message's executeServerSide as that player. Forge's constructor is
+     * package-private; getSender() reads the player back from the connection's listener, which
+     * {@link #owner} sets up.
+     */
+    public static NetworkEvent.Context contextFrom(ServerPlayer sender) {
+        try {
+            Constructor<NetworkEvent.Context> constructor = NetworkEvent.Context.class
+                    .getDeclaredConstructor(Connection.class, NetworkDirection.class, int.class);
+            constructor.setAccessible(true);
+            return constructor.newInstance(sender.connection.connection, NetworkDirection.PLAY_TO_SERVER, 0);
+        } catch (ReflectiveOperationException e) {
+            throw new GameTestAssertException("could not build a network context for " + sender.getScoreboardName() + ": " + e);
+        }
     }
 
     /** Keeps the owner at a fixed relative position every tick. */

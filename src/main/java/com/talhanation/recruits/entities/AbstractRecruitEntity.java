@@ -510,7 +510,8 @@ public abstract class AbstractRecruitEntity extends AbstractInventoryEntity{
         this.setIsOwned(nbt.getBoolean("isOwned"));
         this.setCost(nbt.getInt("Cost"));
         this.setMountTimer(nbt.getInt("mountTimer"));
-        this.setUpkeepTimer(nbt.getInt("UpkeepTimer"));
+        this.setUpkeepTimer(nbt.contains("upkeepTimer") ? nbt.getInt("upkeepTimer") : nbt.getInt("UpkeepTimer")); // KhaosKorps fork: saved as upkeepTimer
+        if (nbt.contains("ShouldRanged")) this.setShouldRanged(nbt.getBoolean("ShouldRanged")); // KhaosKorps fork: saved but never read
         this.setColor(nbt.getByte("Color"));
 
         this.setMaxFallDistance(nbt.getInt("MaxFallDistance"));

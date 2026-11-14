@@ -1,5 +1,6 @@
 package com.talhanation.recruits.khaoskorps;
 
+import com.talhanation.recruits.Main;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
@@ -159,9 +160,14 @@ public final class KhaosKorpsServerConfig {
     static FollowSettings snapshot() {
         double start = FollowStartDistance.get();
         double stop = FollowStopDistance.get();
+        double stopSqr = FollowSettings.stopDistanceSqrWithinStart(start * start, stop * stop);
+        if (stopSqr != stop * stop) {
+            Main.LOGGER.warn("[KhaosKorps] {}: FollowStopDistance {} is beyond FollowStartDistance {}; using {}, "
+                    + "or a following recruit would start and stop on every check without moving", FILE_NAME, stop, start, start);
+        }
         return new FollowSettings(
                 MaxFallDistance.get(), MountedMaxFallDistance.get(),
-                start * start, stop * stop,
+                start * start, stopSqr,
                 FollowRepathTicks.get(), FollowRepathTicksRiding.get(), FollowStartCheckTicks.get(),
                 FollowSpeed.get(),
                 FollowMaxPathLength.get(), SearchNodesPerBlock.get(),

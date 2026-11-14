@@ -64,6 +64,15 @@ public record FollowSettings(
         return current;
     }
 
+    /**
+     * The squared stop distance, held to the squared start distance. A stop distance beyond the
+     * start distance would start the follow goal and stop it on the same check, every check, and the
+     * recruit would never move.
+     */
+    public static double stopDistanceSqrWithinStart(double startDistanceSqr, double stopDistanceSqr) {
+        return Math.min(stopDistanceSqr, startDistanceSqr);
+    }
+
     /** Publishes a new snapshot. Called on config load and save. */
     static void publish(FollowSettings settings) {
         current = settings;

@@ -614,32 +614,6 @@ public class RecruitEvents {
         }
     }
 
-    private final List<AbstractArrow> trackedArrows = new ArrayList<>();
-    private int tickCounter = 0;
-
-    @SubscribeEvent
-    public void onWorldTickArrowCleaner(TickEvent.LevelTickEvent event) {//for 1.18 and 1.19 use TickEvent.WorldTickEvent
-        if (event.level.isClientSide()) return;
-        if (!RecruitsServerConfig.AllowArrowCleaning.get()) return;
-        if (event.phase != TickEvent.Phase.END) return;
-        if (server == null) return;
-
-
-        if (++tickCounter < 100) return; // Alle 5 Sekunden
-        tickCounter = 0;
-
-
-        List<AbstractArrow> arrows = event.level.getEntitiesOfClass(AbstractArrow.class, event.level.getWorldBorder().getCollisionShape().bounds());
-        trackedArrows.addAll(arrows);
-
-
-        Iterator<AbstractArrow> iterator = trackedArrows.iterator();
-        while (iterator.hasNext()) {
-            AbstractArrow arrow = iterator.next();
-            if (arrow.pickup == AbstractArrow.Pickup.DISALLOWED && arrow.inGroundTime > 300) {
-                arrow.discard();
-                iterator.remove();
-            }
-        }
-    }
+    // KhaosKorps fork: the arrow cleaner is khaoskorps/ArrowCleaner. This one searched a box with
+    // infinite bounds, which the entity lookup can't walk, so it never found an arrow.
 }

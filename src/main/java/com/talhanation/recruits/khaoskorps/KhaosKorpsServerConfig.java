@@ -3,13 +3,17 @@ package com.talhanation.recruits.khaoskorps;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
+import net.minecraftforge.fml.event.config.ModConfigEvent;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 
 /**
  * KhaosKorps fork: the fork's own server settings, in their own file so upstream's
  * recruits-server.toml never collides with them (Kosta's Q2 rule 1, approved by the user,
  * DRFT-261113-Recruits_Follow_Pathfinding_Settings_And_Measurement section 5, answer 1).
  *
- * The file is <world>/serverconfig/recruits-khaoskorps-server.toml.
+ * The file is <world>/serverconfig/recruits-khaoskorps-server.toml. Pathfinding values are
+ * copied into an immutable {@link FollowSettings} snapshot whenever the file loads or is saved,
+ * because the path worker thread must not read these config objects.
  */
 public final class KhaosKorpsServerConfig {
 
@@ -19,11 +23,33 @@ public final class KhaosKorpsServerConfig {
 
     public static final ForgeConfigSpec.BooleanValue PreventCreeperBlockDamage;
     public static final ForgeConfigSpec.BooleanValue PreventCreeperDamage;
+    public static final ForgeConfigSpec.BooleanValue CreepersTargetRecruits;
+
+    public static final ForgeConfigSpec.IntValue MaxFallDistance;
+    public static final ForgeConfigSpec.IntValue MountedMaxFallDistance;
+    public static final ForgeConfigSpec.DoubleValue FollowStartDistance;
+    public static final ForgeConfigSpec.DoubleValue FollowStopDistance;
+    public static final ForgeConfigSpec.IntValue FollowRepathTicks;
+    public static final ForgeConfigSpec.IntValue FollowRepathTicksRiding;
+    public static final ForgeConfigSpec.IntValue FollowStartCheckTicks;
+    public static final ForgeConfigSpec.DoubleValue FollowSpeed;
+    public static final ForgeConfigSpec.IntValue FollowMaxPathLength;
+    public static final ForgeConfigSpec.IntValue SearchNodesPerBlock;
+    public static final ForgeConfigSpec.EnumValue<FollowSettings.DirtPathPreference> DirtPathPreference;
+    public static final ForgeConfigSpec.BooleanValue KeepWalkingWhileRepathing;
+    public static final ForgeConfigSpec.BooleanValue StaggerFollowRepaths;
+    public static final ForgeConfigSpec.BooleanValue EdgeMargin;
+    public static final ForgeConfigSpec.IntValue EdgeMarginBlocks;
+    public static final ForgeConfigSpec.BooleanValue WaitWhenOwnerUnreachable;
+    public static final ForgeConfigSpec.DoubleValue MovementSpeedMultiplier;
+    public static final ForgeConfigSpec.DoubleValue SwimSpeedMultiplier;
+    public static final ForgeConfigSpec.BooleanValue PathLog;
 
     static {
+        FollowSettings d = FollowSettings.DEFAULTS;
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
 
-        builder.comment("Creeper explosions. Both settings apply as soon as this file is saved.").push("creepers");
+        builder.comment("Creepers. All three apply as soon as this file is saved.").push("creepers");
         PreventCreeperBlockDamage = builder
                 .comment("Creeper explosions don't break blocks.",
                         "They still hurt and knock back players, recruits and animals unless PreventCreeperDamage is also true.")
@@ -31,6 +57,76 @@ public final class KhaosKorpsServerConfig {
         PreventCreeperDamage = builder
                 .comment("Creeper explosions don't hurt or knock back anything: players, recruits, animals or other entities.")
                 .define("PreventCreeperDamage", false);
+        CreepersTargetRecruits = builder
+                .comment("Creepers hunt recruits as other monsters do. Applies to creepers that appear after the change.")
+                .define("CreepersTargetRecruits", d.creepersTargetRecruits());
+        builder.pop();
+
+        builder.comment("Following and pathfinding. Defaults reproduce Recruits 1.15.2, except EdgeMargin and",
+                "WaitWhenOwnerUnreachable. Each applies as soon as this file is saved.").push("pathfinding");
+        MaxFallDistance = builder
+                .comment("Highest drop, in blocks, a recruit on foot will path down. 1 in Recruits 1.15.2; vanilla mobs use 3.",
+                        "Overrides each recruit's own saved value.")
+                .defineInRange("MaxFallDistance", d.maxFallDistance(), 0, 16);
+        MountedMaxFallDistance = builder
+                .comment("Highest drop, in blocks, a horse ridden by a recruit will path down. 1 in Recruits 1.15.2.",
+                        "A horse takes no fall damage from drops of up to 6 blocks.")
+                .defineInRange("MountedMaxFallDistance", d.mountedMaxFallDistance(), 0, 16);
+        FollowStartDistance = builder
+                .comment("Distance, in blocks, beyond which a recruit in Follow Me starts walking to its owner. 3.0 in 1.15.2.")
+                .defineInRange("FollowStartDistance", Math.sqrt(d.followStartDistanceSqr()), 1.0, 32.0);
+        FollowStopDistance = builder
+                .comment("Distance, in blocks, at which a following recruit stops. About 2.65 in 1.15.2.")
+                .defineInRange("FollowStopDistance", Math.sqrt(d.followStopDistanceSqr()), 0.5, 32.0);
+        FollowRepathTicks = builder
+                .comment("Ticks between new paths while following on foot. 10 in 1.15.2 (20 ticks = 1 second).")
+                .defineInRange("FollowRepathTicks", d.followRepathTicks(), 1, 200);
+        FollowRepathTicksRiding = builder
+                .comment("Ticks between new paths while following mounted. 5 in 1.15.2.")
+                .defineInRange("FollowRepathTicksRiding", d.followRepathTicksRiding(), 1, 200);
+        FollowStartCheckTicks = builder
+                .comment("Ticks between checks of whether to start following. 10 in 1.15.2.")
+                .defineInRange("FollowStartCheckTicks", d.followStartCheckTicks(), 1, 200);
+        FollowSpeed = builder
+                .comment("Speed while following, as a multiple of the recruit's own speed. 1.05 in 1.15.2.")
+                .defineInRange("FollowSpeed", d.followSpeed(), 0.1, 3.0);
+        FollowMaxPathLength = builder
+                .comment("Longest path, in blocks of walking, a following recruit may take.",
+                        "0 = each recruit's own follow range, as in 1.15.2 (32, or 64 for ranged and mounted units).")
+                .defineInRange("FollowMaxPathLength", d.followMaxPathLength(), 0, 256);
+        SearchNodesPerBlock = builder
+                .comment("Search budget: path points examined per block of follow range. 16 in 1.15.2.")
+                .defineInRange("SearchNodesPerBlock", d.searchNodesPerBlock(), 1, 256);
+        DirtPathPreference = builder
+                .comment("How strongly paths prefer dirt paths.",
+                        "ORIGINAL = 1.15.2, which also makes the search run out of budget early;",
+                        "ONCE = the same preference, counted once per path point; OFF = no preference.")
+                .defineEnum("DirtPathPreference", d.dirtPathPreference());
+        KeepWalkingWhileRepathing = builder
+                .comment("Keep walking the current path while the next one is calculated, instead of stopping (the stop-and-go).")
+                .define("KeepWalkingWhileRepathing", d.keepWalkingWhileRepathing());
+        StaggerFollowRepaths = builder
+                .comment("Spread followers' new paths across ticks, so a group doesn't search all at once.")
+                .define("StaggerFollowRepaths", d.staggerFollowRepaths());
+        EdgeMargin = builder
+                .comment("Keep paths back from drops deeper than the fall distance. On by default.")
+                .define("EdgeMargin", d.edgeMargin());
+        EdgeMarginBlocks = builder
+                .comment("How many blocks back from such a drop the margin reaches.")
+                .defineInRange("EdgeMarginBlocks", d.edgeMarginBlocks(), 1, 4);
+        WaitWhenOwnerUnreachable = builder
+                .comment("When no path reaches the owner and the best one ends at a drop, stop short of the edge and wait",
+                        "instead of crowding it. On by default.")
+                .define("WaitWhenOwnerUnreachable", d.waitWhenOwnerUnreachable());
+        MovementSpeedMultiplier = builder
+                .comment("Multiplies every recruit's movement speed. 1.0 = unchanged.")
+                .defineInRange("MovementSpeedMultiplier", d.movementSpeedMultiplier(), 0.1, 3.0);
+        SwimSpeedMultiplier = builder
+                .comment("Multiplies every recruit's swimming speed. 1.0 = unchanged.")
+                .defineInRange("SwimSpeedMultiplier", d.swimSpeedMultiplier(), 0.1, 3.0);
+        PathLog = builder
+                .comment("Write the path measurement log to logs/recruits-paths/. Off by default.")
+                .define("PathLog", d.pathLog());
         builder.pop();
 
         SPEC = builder.build();
@@ -39,8 +135,37 @@ public final class KhaosKorpsServerConfig {
     private KhaosKorpsServerConfig() {
     }
 
-    /** Called once from Main's constructor. */
-    public static void register() {
+    /** Called once from KhaosKorps.init(). */
+    static void register() {
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, SPEC, FILE_NAME);
+        FMLJavaModLoadingContext.get().getModEventBus().addListener(KhaosKorpsServerConfig::onConfigEvent);
+    }
+
+    private static void onConfigEvent(ModConfigEvent event) {
+        if (event.getConfig().getSpec() != SPEC) return;
+        if (event instanceof ModConfigEvent.Unloading) {
+            FollowSettings.publish(FollowSettings.DEFAULTS);
+        } else {
+            FollowSettings.publish(snapshot());
+        }
+    }
+
+    /** Copies the loaded config into an immutable snapshot. Server thread only. */
+    static FollowSettings snapshot() {
+        double start = FollowStartDistance.get();
+        double stop = FollowStopDistance.get();
+        return new FollowSettings(
+                MaxFallDistance.get(), MountedMaxFallDistance.get(),
+                start * start, stop * stop,
+                FollowRepathTicks.get(), FollowRepathTicksRiding.get(), FollowStartCheckTicks.get(),
+                FollowSpeed.get(),
+                FollowMaxPathLength.get(), SearchNodesPerBlock.get(),
+                DirtPathPreference.get(),
+                KeepWalkingWhileRepathing.get(), StaggerFollowRepaths.get(),
+                EdgeMargin.get(), EdgeMarginBlocks.get(),
+                WaitWhenOwnerUnreachable.get(),
+                MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(),
+                CreepersTargetRecruits.get(),
+                PathLog.get());
     }
 }

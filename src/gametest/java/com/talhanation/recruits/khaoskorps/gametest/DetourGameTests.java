@@ -7,6 +7,13 @@ import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
+import com.talhanation.recruits.entities.ai.RecruitFollowOwnerGoal;
+import com.talhanation.recruits.khaoskorps.DetourFollow;
+import com.talhanation.recruits.khaoskorps.DetourPlan;
+import com.talhanation.recruits.khaoskorps.DetourRoutes;
+import com.talhanation.recruits.khaoskorps.FollowSettings;
+import net.minecraft.world.entity.ai.goal.WrappedGoal;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
@@ -89,6 +96,150 @@ public class DetourGameTests {
     /** A following recruit finds its way round the ravine to the owner, without falling in. */
     @GameTest(template = ARENA, timeoutTicks = 1200)
     public static void aFollowingRecruitFindsItsWayAroundARavine(GameTestHelper helper) {
+        followRoundTheRavine(helper);
+    }
+
+    /**
+     * A follower already beside the owner doesn't take the route found for another follower stuck
+     * across the ravine. Once that route is found, the owner walks 8 blocks east along the south
+     * bank; the follower beside it follows along the bank, and never heads north toward the route.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 900)
+    public static void aFollowerBesideTheOwnerKeepsToItsSideWhileAnotherWalksARoute(GameTestHelper helper) {
+        ravineArena(helper);
+        ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
+        standing(helper, owner);
+        double[] ownerX = {24.5};
+        helper.onEachTick(() -> {
+            Vec3 at = helper.absoluteVec(new Vec3(ownerX[0], 5, 33.5));
+            owner.setPos(at.x, at.y, at.z);
+        });
+        AbstractRecruitEntity across = followingRecruit(helper, owner, 24, 5, 12);
+        AbstractRecruitEntity beside = followingRecruit(helper, owner, 22, 5, 33);
+        long[] movedAt = {-1};
+        helper.onEachTick(() -> {
+            if (relative(helper, beside).z < 26.0) {
+                throw new GameTestAssertException("the follower beside the owner headed for the other side at tick " + helper.getTick()
+                        + ": at " + describe(helper, beside) + "; " + navigationState(helper, beside));
+            }
+            if (movedAt[0] >= 0) return;
+            DetourPlan plan = DetourRoutes.plan(owner.getUUID());
+            if (plan != null && plan.status() == DetourPlan.Status.FOUND && !plan.route().isEmpty()) {
+                ownerX[0] = 32.5;
+                movedAt[0] = helper.getTick();
+            }
+        });
+        helper.succeedWhen(() -> {
+            if (movedAt[0] < 0) throw new GameTestAssertException("no route found yet for the follower across the ravine");
+            if (helper.getTick() < movedAt[0] + 60 || beside.distanceToSqr(owner) > 3.5 * 3.5) {
+                throw new GameTestAssertException("at tick " + helper.getTick() + " the follower beside the owner is at "
+                        + describe(helper, beside) + "; " + navigationState(helper, beside));
+            }
+            removeOwner(helper, owner);
+        });
+    }
+
+    /**
+     * A plan that found the owner in reach directly, with no waypoints, doesn't stop the next plan.
+     * The plan starts with the owner on the recruit's side, then the owner moves across the ravine,
+     * 14 blocks from where the plan was made; the recruit, stuck, gets a new plan and goes round.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 1100)
+    public static void aPlanThatFoundTheOwnerDirectlyDoesNotBlockTheNext(GameTestHelper helper) {
+        ravineArena(helper);
+        ServerPlayer owner = owner(helper, 24.5, 5, 16.5);
+        standing(helper, owner);
+        double[] ownerZ = {16.5};
+        helper.onEachTick(() -> {
+            Vec3 at = helper.absoluteVec(new Vec3(24.5, 5, ownerZ[0]));
+            owner.setPos(at.x, at.y, at.z);
+        });
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 24, 5, 6);
+        boolean[] requested = {false};
+        long[] movedAt = {-1};
+        helper.onEachTick(() -> {
+            if (relative(helper, recruit).y < 4.99) {
+                throw new GameTestAssertException("the recruit fell into the ravine: at " + describe(helper, recruit));
+            }
+            if (!requested[0]) {
+                if (helper.getTick() < 2) return;
+                requested[0] = DetourRoutes.request(owner, recruit, FollowSettings.current());
+                if (!requested[0]) throw new GameTestAssertException("setup: the first plan didn't start");
+                return;
+            }
+            if (movedAt[0] >= 0) return;
+            DetourPlan plan = DetourRoutes.plan(owner.getUUID());
+            if (plan == null) throw new GameTestAssertException("setup: the first plan was dropped");
+            if (plan.status() == DetourPlan.Status.PLANNING) return;
+            if (plan.status() != DetourPlan.Status.FOUND || !plan.route().isEmpty()) {
+                throw new GameTestAssertException("setup: with the owner in reach the first plan should find it directly; it ended "
+                        + plan.status() + " with " + plan.route().size() + " waypoints");
+            }
+            ownerZ[0] = 30.5;
+            movedAt[0] = helper.getTick();
+        });
+        helper.succeedWhen(() -> {
+            if (movedAt[0] < 0 || recruit.distanceToSqr(owner) > 3.5 * 3.5) {
+                DetourPlan plan = DetourRoutes.plan(owner.getUUID());
+                throw new GameTestAssertException("at tick " + helper.getTick() + " the recruit is at " + describe(helper, recruit)
+                        + ", plan " + (plan == null ? "none" : plan.status() + " with " + plan.route().size() + " waypoints"));
+            }
+            removeOwner(helper, owner);
+        });
+    }
+
+    /**
+     * What a recruit noted long ago doesn't start a plan the moment it follows again. Its detour
+     * state is set as if its last follow path, long ago, hadn't reached and it had stood still since;
+     * the owner is now in plain reach, so no plan should start.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 60)
+    public static void oldDetourStateDoesNotStartAPlanWhenFollowingStarts(GameTestHelper helper) {
+        ravineArena(helper);
+        ServerPlayer owner = owner(helper, 24.5, 5, 16.5);
+        pin(helper, owner, 24.5, 5, 16.5);
+        standing(helper, owner);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 24, 5, 6);
+        DetourFollow detour = detourOf(recruit);
+        setField(detour, "stillAt", recruit.position());
+        setField(detour, "stillSince", 0L);
+        setField(detour, "lastPathReached", Boolean.FALSE);
+        helper.runAtTickTime(40, () -> {
+            DetourPlan plan = DetourRoutes.plan(owner.getUUID());
+            removeOwner(helper, owner);
+            recruit.discard();
+            if (plan != null) throw new GameTestAssertException("a plan started from old state, with the owner in reach: " + plan.status());
+            helper.succeed();
+        });
+    }
+
+    private static DetourFollow detourOf(AbstractRecruitEntity recruit) {
+        for (WrappedGoal wrapped : recruit.goalSelector.getAvailableGoals()) {
+            if (wrapped.getGoal() instanceof RecruitFollowOwnerGoal goal) {
+                try {
+                    java.lang.reflect.Field field = RecruitFollowOwnerGoal.class.getDeclaredField("detour");
+                    field.setAccessible(true);
+                    return (DetourFollow) field.get(goal);
+                } catch (ReflectiveOperationException e) {
+                    throw new GameTestAssertException("setup: can't reach the follow goal's detour state: " + e);
+                }
+            }
+        }
+        throw new GameTestAssertException("setup: the recruit has no RecruitFollowOwnerGoal");
+    }
+
+    private static void setField(Object target, String name, Object value) {
+        try {
+            java.lang.reflect.Field field = target.getClass().getDeclaredField(name);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (ReflectiveOperationException e) {
+            throw new GameTestAssertException("setup: can't set " + name + ": " + e);
+        }
+    }
+
+    /** The ravine follow scene: the recruit north, the owner south, the recruit must go round without falling in. */
+    static void followRoundTheRavine(GameTestHelper helper) {
         ravineArena(helper);
         ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
         pin(helper, owner, 24.5, 5, 33.5);

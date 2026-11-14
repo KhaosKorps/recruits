@@ -4,6 +4,7 @@ import com.talhanation.recruits.Main;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.entities.ai.RecruitFollowOwnerGoal;
 import com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig;
+import com.talhanation.recruits.khaoskorps.FollowSettings;
 import net.minecraft.gametest.framework.AfterBatch;
 import net.minecraft.gametest.framework.BeforeBatch;
 import net.minecraft.gametest.framework.GameTest;
@@ -223,11 +224,13 @@ public class FollowGoalSettingGameTests {
     }
 
     /**
-     * StaggerFollowRepaths: five recruits told to follow on the same tick start their re-plan
-     * countdowns at different points, by entity id, so a group doesn't search all at once.
+     * StaggerFollowRepaths: five recruits told to follow on the same tick each search at once, as
+     * they must, so each has a path within a few ticks and walks toward the owner; from then on their
+     * re-plans fall on different ticks, by entity id. At least one id must leave a remainder of 2 or
+     * more by the re-plan period, or a first countdown staggered by id couldn't show.
      */
-    @GameTest(template = T, timeoutTicks = 60, batch = STAGGER)
-    public static void withStaggerOnFollowersStartingTogetherReplanAtDifferentTimes(GameTestHelper helper) {
+    @GameTest(template = T, timeoutTicks = 200, batch = STAGGER)
+    public static void withStaggerOnFollowersStartingTogetherAllFollowAndReplanAtDifferentTimes(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
         daytime(helper);
@@ -235,20 +238,41 @@ public class FollowGoalSettingGameTests {
         pin(helper, owner, 14.5, 3, 2.5);
         java.util.List<AbstractRecruitEntity> group = new java.util.ArrayList<>();
         for (int i = 0; i < 5; i++) group.add(followingRecruit(helper, owner, 1 + i % 3, 3, 1 + i / 3 * 2));
-        java.util.Set<Integer> starts = new java.util.HashSet<>();
-        boolean[] seen = new boolean[5];
+        int period = Math.max(1, (FollowSettings.current().followRepathTicks() + 1) / 2);
+        if (group.stream().noneMatch(r -> r.getId() % period >= 2)) {
+            throw new GameTestAssertException("setup: no recruit id leaves a remainder of 2 or more by " + period);
+        }
+        double[] startDistance = new double[5];
+        long[] followingSince = {-1, -1, -1, -1, -1};
+        boolean[] hadPath = new boolean[5];
+        for (int i = 0; i < 5; i++) startDistance[i] = Math.sqrt(group.get(i).distanceToSqr(owner));
+        java.util.Set<Integer> phases = new java.util.HashSet<>();
         helper.onEachTick(() -> {
-            for (int i = 0; i < group.size(); i++) {
-                if (seen[i] || !group.get(i).isFollowing()) continue;
-                seen[i] = true;
-                starts.add(countdown(followGoal(group.get(i))));
+            long tick = helper.getTick();
+            for (int i = 0; i < 5; i++) {
+                AbstractRecruitEntity recruit = group.get(i);
+                if (followingSince[i] < 0 && recruit.isFollowing()) followingSince[i] = tick;
+                if (recruit.getNavigation().getPath() != null) hadPath[i] = true;
+                if (followingSince[i] >= 0 && !hadPath[i] && tick - followingSince[i] > 10) {
+                    throw new GameTestAssertException("the recruit with id " + recruit.getId() + " has followed since tick "
+                            + followingSince[i] + " with no path");
+                }
             }
-            for (boolean s : seen) if (!s) return;
+            if (tick == 6) for (AbstractRecruitEntity recruit : group) phases.add(countdown(followGoal(recruit)));
+        });
+        helper.runAtTickTime(80, () -> {
             removeOwner(helper, owner);
             group.forEach(AbstractRecruitEntity::discard);
-            if (starts.size() < 3) {
-                throw new GameTestAssertException("five followers that started together have only " + starts.size()
-                        + " distinct re-plan countdowns: " + starts);
+            for (int i = 0; i < 5; i++) {
+                double now = Math.sqrt(group.get(i).distanceToSqr(owner));
+                if (now > startDistance[i] - 5.0) {
+                    throw new GameTestAssertException("the recruit with id " + group.get(i).getId() + " is " + blocks(now * now)
+                            + " blocks from the owner, from " + blocks(startDistance[i] * startDistance[i]) + " at the start");
+                }
+            }
+            if (phases.size() < 3) {
+                throw new GameTestAssertException("five followers that started together have only " + phases.size()
+                        + " distinct re-plan countdowns at tick 6: " + phases);
             }
             helper.succeed();
         });

@@ -108,6 +108,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     @Nullable
     protected Path createPath(Set<BlockPos> p_148223_, int p_148224_, boolean p_148225_, int p_148226_, float p_148227_) {
         if(Thread.currentThread().getThreadGroup() != SidedThreadGroups.SERVER) return null;
+        this.takePendingIfFinished(); // KhaosKorps fork: so the checks below see the newest path
         if (p_148223_.isEmpty()) {
             return null;
         } else if (this.mob.getY() < (double) this.level.getMinBuildHeight()) {
@@ -167,6 +168,30 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         } finally {
             this.searchRange = 0;
         }
+    }
+
+    /**
+     * KhaosKorps fork: KeepWalkingWhileRepathing: a waiting path whose search has finished takes over,
+     * trimmed as moveTo trims. Called from tick, createPath and moveTo, so whichever comes first after
+     * the search finishes sees the new path.
+     */
+    private void takePendingIfFinished() {
+        if (this.pendingPath instanceof AsyncPath pending && pending.isProcessed()) {
+            this.path = pending;
+            this.pendingPath = null;
+            this.trimPath();
+        }
+    }
+
+    /** KhaosKorps fork: the newest path asked for: the one still being searched while the old one is walked, else the walked one. */
+    @Nullable
+    public Path latestPath() {
+        return this.pendingPath != null ? this.pendingPath : this.path;
+    }
+
+    /** KhaosKorps fork: whether a new path is being searched while the old one is walked. */
+    public boolean hasPendingPath() {
+        return this.pendingPath != null;
     }
 
     /** KhaosKorps fork: whether a finished path with points left is being walked. */
@@ -252,6 +277,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             this.pendingPath = null; // KhaosKorps fork
             return false;
         }
+        this.takePendingIfFinished(); // KhaosKorps fork
         // KhaosKorps fork: KeepWalkingWhileRepathing: while the new path is still searched, keep walking the old one.
         if (p_26537_ instanceof AsyncPath incoming && !incoming.isProcessed() && p_26537_ != this.path
                 && FollowSettings.current().keepWalkingWhileRepathing() && this.isWalkingAFinishedPath()) {
@@ -259,7 +285,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             this.speedModifier = p_26538_;
             return true;
         }
-        this.pendingPath = null; // KhaosKorps fork
+        if (p_26537_ != this.path) this.pendingPath = null; // KhaosKorps fork: a different path drops a waiting one; the walked one handed back keeps it
         if (!p_26537_.sameAs(this.path)) {
             this.path = p_26537_;
         }
@@ -303,12 +329,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     @Override
     public void tick() {
         ++this.tick;
-        // KhaosKorps fork: KeepWalkingWhileRepathing: the new path takes over once its search has finished.
-        if (this.pendingPath instanceof AsyncPath pending && pending.isProcessed()) {
-            this.path = pending;
-            this.pendingPath = null;
-            this.trimPath();
-        }
+        this.takePendingIfFinished(); // KhaosKorps fork: KeepWalkingWhileRepathing
         if (this.hasDelayedRecomputation) {
             this.recomputePath();
         }

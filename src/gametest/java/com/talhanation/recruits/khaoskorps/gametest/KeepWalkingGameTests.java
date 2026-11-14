@@ -1,6 +1,9 @@
 package com.talhanation.recruits.khaoskorps.gametest;
 
 import com.talhanation.recruits.Main;
+import com.talhanation.recruits.config.RecruitsServerConfig;
+import com.talhanation.recruits.entities.ai.RecruitFollowOwnerGoal;
+import net.minecraft.world.entity.ai.goal.WrappedGoal;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.init.ModEntityTypes;
 import com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig;
@@ -56,6 +59,146 @@ public class KeepWalkingGameTests {
     @BeforeBatch(batch = DEFAULT_ALONE)
     public static void defaults(ServerLevel level) {
         resetForkSettings();
+    }
+
+    private static final String REPEAT_ALONE = "khaoskorps_keep_walking_repeat";
+    private static final String GOAL_ALONE = "khaoskorps_keep_walking_goal";
+
+    @BeforeBatch(batch = REPEAT_ALONE)
+    public static void keepWalkingRepeat(ServerLevel level) {
+        keepWalking(level);
+    }
+
+    @AfterBatch(batch = REPEAT_ALONE)
+    public static void afterKeepWalkingRepeat(ServerLevel level) {
+        resetForkSettings();
+    }
+
+    @BeforeBatch(batch = GOAL_ALONE)
+    public static void keepWalkingGoal(ServerLevel level) {
+        keepWalking(level);
+    }
+
+    @AfterBatch(batch = GOAL_ALONE)
+    public static void afterKeepWalkingGoal(ServerLevel level) {
+        resetForkSettings();
+    }
+
+    /**
+     * A finished search waiting to take over isn't lost when the same target is asked for again
+     * before the navigation's next tick: the request gets the new path. The path workers are held
+     * by latched jobs queued first, so the search stays unfinished until the test lets it run.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 100, batch = REPEAT_ALONE)
+    public static void withKeepWalkingAFinishedSearchIsNotLostToARepeatedRequest(GameTestHelper helper) {
+        if (!RecruitsServerConfig.UseAsyncPathfinding.get()) {
+            helper.succeed();
+            return;
+        }
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        AbstractRecruitEntity recruit = helper.spawn(ModEntityTypes.RECRUIT.get(), 2, 3, 2);
+        recruit.setNoAi(true);
+        recruit.setOnGround(true);
+        AsyncPathNavigation navigation = (AsyncPathNavigation) recruit.getNavigation();
+        BlockPos target = helper.absolutePos(new BlockPos(13, 3, 2));
+        Path walked = corridorPath(helper, 2, 9);
+        AsyncPath[] search = {null};
+        CountDownLatch release = holdTheWorkers(helper);
+        try {
+            navigation.moveTo(walked, 1.0D);
+            Path requested = navigation.createPath(target, 1);
+            if (!(requested instanceof AsyncPath async) || async.isProcessed()) {
+                throw new GameTestAssertException("setup: expected a search still waiting, got " + requested);
+            }
+            search[0] = async;
+            navigation.moveTo(requested, 1.0D);
+            if (navigation.getPath() != walked) throw new GameTestAssertException("setup: the walked path wasn't kept");
+        } finally {
+            release.countDown();
+        }
+        helper.onEachTick(() -> {
+            if (!search[0].isProcessed()) return;
+            recruit.setOnGround(true);
+            navigation.moveTo(navigation.createPath(target, 1), 1.0D);
+            Path now = navigation.getPath();
+            recruit.discard();
+            if (now != search[0]) {
+                throw new GameTestAssertException("after its search finished, asking again for the same target left the navigation on "
+                        + (now == walked ? "the old path" : String.valueOf(now)));
+            }
+            helper.succeed();
+        });
+    }
+
+    /**
+     * The follow goal keeps going while a new search waits, even once the old path has run out; it
+     * used to stop there, dropping the search, and wait to start again.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 40, batch = GOAL_ALONE)
+    public static void withKeepWalkingTheFollowGoalWaitsForASearchWhenItsPathRunsOut(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        daytime(helper);
+        net.minecraft.server.level.ServerPlayer owner = owner(helper, 13.5, 3, 2.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 2, 3, 2);
+        recruit.setNoAi(true);
+        AsyncPathNavigation navigation = (AsyncPathNavigation) recruit.getNavigation();
+        RecruitFollowOwnerGoal goal = followGoal(recruit);
+        CountDownLatch release = new CountDownLatch(1);
+        boolean continues;
+        try {
+            Path walked = corridorPath(helper, 2, 9);
+            navigation.moveTo(walked, 1.0D);
+            AsyncPath held = new AsyncPath(new ArrayList<>(), Set.of(helper.absolutePos(new BlockPos(13, 3, 2))), helper.getLevel(), () -> {
+                try {
+                    release.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return corridorPath(helper, 2, 13);
+            });
+            navigation.moveTo(held, 1.0D);
+            walked.setNextNodeIndex(walked.getNodeCount());
+            if (!goal.canUse()) throw new GameTestAssertException("setup: the follow goal won't start");
+            continues = goal.canContinueToUse();
+        } finally {
+            release.countDown();
+        }
+        removeOwner(helper, owner);
+        recruit.discard();
+        if (!continues) throw new GameTestAssertException("with a search still running, the follow goal stopped because the walked path ran out");
+        helper.succeed();
+    }
+
+    /** The ravine follow with keep-walking on: the detour's checks read the newest path, not the one being walked. */
+    @GameTest(template = DetourGameTests.ARENA, timeoutTicks = 1200, batch = KEEP_WALKING)
+    public static void withKeepWalkingAFollowingRecruitFindsItsWayAroundARavine(GameTestHelper helper) {
+        DetourGameTests.followRoundTheRavine(helper);
+    }
+
+    /** Queues one latched job per path worker, so a search queued after them waits until the latch opens. */
+    private static CountDownLatch holdTheWorkers(GameTestHelper helper) {
+        CountDownLatch release = new CountDownLatch(1);
+        int workers = Math.max(1, RecruitsServerConfig.AsyncPathfindingThreadsCount.get());
+        for (int i = 0; i < workers; i++) {
+            new AsyncPath(new ArrayList<>(), Set.of(helper.absolutePos(new BlockPos(1, 3, 2))), helper.getLevel(), () -> {
+                try {
+                    release.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return null;
+            });
+        }
+        return release;
+    }
+
+    private static RecruitFollowOwnerGoal followGoal(AbstractRecruitEntity recruit) {
+        for (WrappedGoal wrapped : recruit.goalSelector.getAvailableGoals()) {
+            if (wrapped.getGoal() instanceof RecruitFollowOwnerGoal goal) return goal;
+        }
+        throw new GameTestAssertException("setup: the recruit has no RecruitFollowOwnerGoal");
     }
 
     /** With the setting on: the old path is kept while the new one is searched, and the new one takes over once finished. */

@@ -28,6 +28,7 @@ public class RecruitFollowOwnerGoal extends Goal {
     private int timeToRecalcPath;
     private long lastCanUseCheck;
     private final DetourFollow detour = new DetourFollow(); // KhaosKorps fork
+    private boolean staggerFirstReplan; // KhaosKorps fork: StaggerFollowRepaths, until the first path is asked for
 
     public RecruitFollowOwnerGoal(AbstractRecruitEntity recruit, double speedModifier, float startDistance, float stopDistance) {
         this.recruit = recruit;
@@ -61,17 +62,17 @@ public class RecruitFollowOwnerGoal extends Goal {
     }
 
     public boolean canContinueToUse() {
-        if (this.recruit.getNavigation().isDone()) {
+        if (this.recruit.getNavigation().isDone()
+                && !(this.recruit.getNavigation() instanceof AsyncPathNavigation waiting && waiting.hasPendingPath())) { // KhaosKorps fork: or a new path is still being searched
             return false;
         }
         return !(this.recruit.distanceToSqr(this.owner) <= FollowSettings.current().followStopDistanceSqr()) && this.recruit.getShouldFollow() && !recruit.getFleeing() && recruit.getFollowState() == 1 && !recruit.needsToGetFood() && !recruit.getShouldMount() && !recruit.getShouldMovePos(); // KhaosKorps fork: stop distance
     }
 
     public void start() {
-        FollowSettings settings = FollowSettings.current(); // KhaosKorps fork: StaggerFollowRepaths spreads a group's first re-plans by id
-        this.timeToRecalcPath = settings.staggerFollowRepaths()
-                ? this.recruit.getId() % Math.max(1, this.adjustedTickDelay(settings.followRepathTicks()))
-                : 0;
+        this.timeToRecalcPath = 0;
+        this.staggerFirstReplan = FollowSettings.current().staggerFollowRepaths(); // KhaosKorps fork
+        this.detour.started(this.recruit.getCommandSenderWorld().getGameTime()); // KhaosKorps fork
         this.recruit.setIsFollowing(true);
     }
 
@@ -80,7 +81,8 @@ public class RecruitFollowOwnerGoal extends Goal {
         this.owner = null;
         this.recruit.setIsFollowing(false);
         this.clearEdgeCare(); // KhaosKorps fork
-        this.detour.notePath(this.recruit.getNavigation().getPath()); // KhaosKorps fork: before the path is cleared
+        this.detour.notePath(this.recruit.getNavigation() instanceof AsyncPathNavigation latest ? latest.latestPath() : this.recruit.getNavigation().getPath()); // KhaosKorps fork: before the path is cleared
+        this.detour.stopped(this.recruit.getCommandSenderWorld().getGameTime()); // KhaosKorps fork
         this.recruit.getNavigation().stop();
     }
 
@@ -100,6 +102,12 @@ public class RecruitFollowOwnerGoal extends Goal {
             this.timeToRecalcPath = this.recruit.getVehicle() != null
                     ? this.adjustedTickDelay(settings.followRepathTicksRiding()) // KhaosKorps fork: was 5
                     : this.adjustedTickDelay(settings.followRepathTicks()); // KhaosKorps fork: was 10
+            if (this.staggerFirstReplan) {
+                // KhaosKorps fork: StaggerFollowRepaths: the first path is asked for at once; the re-plan after it
+                // waits a further id % period, so a group told to follow together re-plans on different ticks.
+                this.timeToRecalcPath += this.recruit.getId() % Math.max(1, this.timeToRecalcPath);
+                this.staggerFirstReplan = false;
+            }
 
             this.recruit.getLookControl().setLookAt(this.owner, 10.0F, (float)this.recruit.getMaxHeadXRot());
             PathNavigation navigation = this.recruit.getNavigation();
@@ -107,7 +115,7 @@ public class RecruitFollowOwnerGoal extends Goal {
                 if (this.caredNavigation != asyncNavigation) this.clearEdgeCare();
                 asyncNavigation.setEdgeCare(EdgeCare.forFollowing(settings));
                 this.caredNavigation = asyncNavigation;
-                this.detour.notePath(asyncNavigation.getPath());
+                this.detour.notePath(asyncNavigation.latestPath());
                 BlockPos waypoint = this.detour.waypoint(this.recruit, this.owner, settings);
                 if (waypoint != null) {
                     asyncNavigation.moveTo(asyncNavigation.createPath(waypoint, 1), settings.followSpeed());

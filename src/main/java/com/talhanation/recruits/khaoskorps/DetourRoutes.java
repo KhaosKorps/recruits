@@ -69,6 +69,21 @@ public final class DetourRoutes {
         return true;
     }
 
+    /**
+     * Drops the owner's found plan, which is no use to {@code walker} (it has no waypoints, or the
+     * walker has walked it to the end and is stuck again), and starts a new one from where the
+     * walker stands. Logged, so a planner that keeps finding the owner in reach while the walker
+     * can't reach it shows as one replacement per stuck spell.
+     */
+    public static boolean replace(LivingEntity owner, Mob walker, FollowSettings settings) {
+        DetourPlan old = BY_OWNER.get(owner.getUUID());
+        if (old == null || old.status() != DetourPlan.Status.FOUND) return request(owner, walker, settings);
+        BY_OWNER.remove(owner.getUUID());
+        Main.LOGGER.info("[KhaosKorps] Detour for the recruits following {}: a recruit is stuck after a route of {} waypoints; planning again",
+                owner.getScoreboardName(), old.route().size());
+        return request(owner, walker, settings);
+    }
+
     /** The plan for the recruits following this owner, if any. */
     @Nullable
     public static DetourPlan plan(UUID owner) {

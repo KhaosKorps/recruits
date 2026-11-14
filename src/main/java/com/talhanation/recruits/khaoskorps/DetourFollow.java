@@ -13,12 +13,16 @@ import java.util.List;
 /**
  * A following recruit's part in a detour: noticing it is stuck, asking {@link DetourRoutes} for a
  * plan, and walking the plan's waypoints, re-checking at each waypoint for a direct path to its
- * owner. One per follow goal; its state outlives the goal's stops and starts. Server thread only.
+ * owner. One per follow goal. Its state outlives the goal's quick stops and starts (a stuck recruit's
+ * goal stops each time its cut-back path runs out), but not a longer pause: after
+ * {@link #FORGET_AFTER_TICKS} stopped, what it noted is forgotten. Server thread only.
  */
 public final class DetourFollow {
 
     /** How long a recruit may make no progress, with no path to its owner, before a plan is asked for. */
     public static final int STUCK_TICKS = 60;
+    /** A follow goal stopped this long starts again with nothing noted. */
+    public static final int FORGET_AFTER_TICKS = STUCK_TICKS;
     /** Moving less than this, in blocks, isn't progress. */
     private static final double PROGRESS = 1.5;
     /** Within this many blocks of a waypoint, horizontally, the recruit has reached it. */
@@ -31,19 +35,40 @@ public final class DetourFollow {
     @Nullable private DetourPlan walking;
     private int next;
     private boolean checkingDirect;
+    private long stoppedAt = -1;
 
     /**
      * Records whether a follow path reached its owner, once its search has finished. The follow goal
-     * calls this before it replaces or clears the path.
+     * calls this with the newest path before it replaces or clears it.
      */
     public void notePath(@Nullable Path path) {
         if (path == null || (path instanceof AsyncPath async && !async.isProcessed())) return;
         this.lastPathReached = path.canReach();
     }
 
+    /** The follow goal stopped at {@code tick}. */
+    public void stopped(long tick) {
+        this.stoppedAt = tick;
+    }
+
+    /** The follow goal started at {@code tick}: after a long pause, or the first time, nothing noted before counts. */
+    public void started(long tick) {
+        if (this.stoppedAt >= 0 && tick - this.stoppedAt <= FORGET_AFTER_TICKS) return;
+        this.stillAt = null;
+        this.lastPathReached = null;
+        this.walking = null;
+        this.checkingDirect = false;
+    }
+
     /**
      * Where the recruit should walk next instead of straight to its owner, or null to follow the
      * owner as usual. Called each time the follow goal asks for a new path.
+     *
+     * A found route is taken by a recruit already walking it, or by one whose own last follow path
+     * didn't reach the owner; one that can reach the owner, such as one already on the owner's side,
+     * follows as usual. A recruit stuck for {@link #STUCK_TICKS} asks for a plan, and replaces a
+     * found one that is no use to it: one with no waypoints (its planner found the owner in reach),
+     * or one it has walked to the end.
      */
     @Nullable
     public BlockPos waypoint(Mob recruit, LivingEntity owner, FollowSettings settings) {
@@ -51,15 +76,17 @@ public final class DetourFollow {
             this.walking = null;
             return null;
         }
+        this.noteProgress(recruit);
         DetourPlan plan = DetourRoutes.plan(owner.getUUID());
-        if (plan != null && plan.status() == DetourPlan.Status.FOUND && !plan.route().isEmpty()) {
+        boolean found = plan != null && plan.status() == DetourPlan.Status.FOUND;
+        boolean spent = found && (plan.route().isEmpty() || (plan == this.walking && this.next >= plan.route().size()));
+        if (found && !spent && (plan == this.walking || Boolean.FALSE.equals(this.lastPathReached))) {
             return this.alongRoute(recruit, plan);
         }
-        this.walking = null;
-        this.noteProgress(recruit);
         long still = recruit.level().getGameTime() - this.stillSince;
         if (still >= STUCK_TICKS && Boolean.FALSE.equals(this.lastPathReached) && owner.onGround()) {
-            DetourRoutes.request(owner, recruit, settings);
+            if (spent) DetourRoutes.replace(owner, recruit, settings);
+            else DetourRoutes.request(owner, recruit, settings);
         }
         return null;
     }

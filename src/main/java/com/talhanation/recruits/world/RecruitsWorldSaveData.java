@@ -6,7 +6,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.UUID;
 
-public class RecruitsWorldSaveData extends SavedData {
+public class RecruitsWorldSaveData extends com.talhanation.recruits.khaoskorps.AtomicSavedData { // KhaosKorps fork: written safely, was SavedData
     private static final String FILE_ID = "recruitsWorldId";
     private UUID worldId;
 

@@ -7,7 +7,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.*;
 
-public class RecruitsDiplomacySaveData extends SavedData {
+public class RecruitsDiplomacySaveData extends com.talhanation.recruits.khaoskorps.AtomicSavedData { // KhaosKorps fork: written safely, was SavedData
 
     public static final Map<String, Map<String, DiplomacyStatus>> diplomacyMap = new HashMap<>();
     public static final Map<UUID, String> embargoMap = new HashMap<>();

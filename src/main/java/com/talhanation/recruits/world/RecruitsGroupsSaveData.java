@@ -8,7 +8,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.*;
 
-public class RecruitsGroupsSaveData extends SavedData {
+public class RecruitsGroupsSaveData extends com.talhanation.recruits.khaoskorps.AtomicSavedData { // KhaosKorps fork: written safely, was SavedData
     private static final String FILE_ID = "recruitsGroups";
     private List<RecruitsGroup> groups = new ArrayList<>();
     private Map<UUID, UUID> redirects = new HashMap<>();

@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public class RecruitPlayerUnitSaveData extends SavedData {
+public class RecruitPlayerUnitSaveData extends com.talhanation.recruits.khaoskorps.AtomicSavedData { // KhaosKorps fork: written safely, was SavedData
     public static final Map<UUID, Integer> recruitCountMap = new HashMap<>();
     private static final String DATA_NAME = "recruit_player_unit_data";
 

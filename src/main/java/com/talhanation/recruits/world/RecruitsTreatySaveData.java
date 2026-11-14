@@ -7,7 +7,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 import java.util.HashMap;
 import java.util.Map;
 
-public class RecruitsTreatySaveData extends SavedData {
+public class RecruitsTreatySaveData extends com.talhanation.recruits.khaoskorps.AtomicSavedData { // KhaosKorps fork: written safely, was SavedData
 
     private static final String DATA_NAME = "treaties_data";
     private Map<String, Long> treaties = new HashMap<>();

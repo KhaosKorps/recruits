@@ -10,7 +10,7 @@ import net.minecraft.world.level.storage.DimensionDataStorage;
 import java.util.HashMap;
 import java.util.Map;
 
-public class RecruitsTeamSaveData extends SavedData {
+public class RecruitsTeamSaveData extends com.talhanation.recruits.khaoskorps.AtomicSavedData { // KhaosKorps fork: written safely, was SavedData
 
     public static final String FILE_ID = "recruitsTeamSaveData";
     private Map<String, RecruitsFaction> teams = new HashMap<>();

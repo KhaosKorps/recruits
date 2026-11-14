@@ -12,7 +12,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
-public class RecruitsClaimSaveData extends SavedData {
+public class RecruitsClaimSaveData extends com.talhanation.recruits.khaoskorps.AtomicSavedData { // KhaosKorps fork: written safely, was SavedData
     private static final String FILE_ID = "recruitsClaims";
     private List<RecruitsClaim> claimList = new ArrayList<>();
 

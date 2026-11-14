@@ -23,8 +23,12 @@ import java.nio.file.StandardOpenOption;
  * disk before the move where the system allows (best effort), so a power cut just after it can't leave
  * an empty file under the old name, and
  * a move refused for a moment (a backup tool or virus scanner holding the file) is tried again a few
- * times. Otherwise it behaves as the game's: only dirty data is written, a failure is logged, and the
- * data counts as saved afterwards; the stores mark themselves dirty again at the next autosave.
+ * times. A new file that can't be opened for that (access denied, as a scanner holding it can cause)
+ * still goes in, written and closed; any other error putting it on disk (a failing or full disk) fails
+ * the save, as a failed write does. The thread's interrupt flag is set aside during the save, so an
+ * interrupted server thread can still save, and restored after. Otherwise it behaves as the game's:
+ * only dirty data is written, a failure is logged, and the data counts as saved afterwards; the stores
+ * mark themselves dirty again at the next autosave.
  */
 public abstract class AtomicSavedData extends SavedData {
 
@@ -36,14 +40,13 @@ public abstract class AtomicSavedData extends SavedData {
         NbtUtils.addCurrentDataVersion(tag);
         Path target = file.toPath();
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
+        boolean interrupted = Thread.interrupted();
         try {
             NbtIo.writeCompressed(tag, temporary.toFile());
-            try (FileChannel written = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
-                written.force(true);
-            } catch (IOException notForced) {
-                // Best effort: the file is written and closed either way, so the save goes on without the
-                // extra safety (a scanner holding the file, a file system that refuses, an interrupted thread).
-                Main.LOGGER.debug("[KhaosKorps] Could not force {} to disk before moving it", temporary, notForced);
+            try {
+                this.forceToDisk(temporary);
+            } catch (java.nio.file.AccessDeniedException notOpened) {
+                Main.LOGGER.debug("[KhaosKorps] Could not open {} to force it to disk; moving it as written", temporary, notOpened);
             }
             moveOver(temporary, target);
         } catch (IOException e) {
@@ -53,8 +56,17 @@ public abstract class AtomicSavedData extends SavedData {
             } catch (IOException cleanup) {
                 Main.LOGGER.warn("[KhaosKorps] Could not remove the unfinished save {}", temporary, cleanup);
             }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
         }
         this.setDirty(false);
+    }
+
+    /** Puts the written file on disk before it replaces the old one. A seam for tests to make it fail. */
+    protected void forceToDisk(Path file) throws IOException {
+        try (FileChannel written = FileChannel.open(file, StandardOpenOption.WRITE)) {
+            written.force(true);
+        }
     }
 
     static final int MOVE_ATTEMPTS = 5;

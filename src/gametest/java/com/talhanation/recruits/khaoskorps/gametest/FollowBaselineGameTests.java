@@ -182,16 +182,40 @@ public class FollowBaselineGameTests {
         forkSettings(() -> com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.MaxFallDistance.set(blocks));
     }
 
-    /** The same pit at fall distance 2. Optional: the recruit enters it until paths stop ending in pits. */
-    @GameTest(template = T, timeoutTicks = 420, required = false, batch = PIT_FALL_2)
+    /** The same pit at fall distance 2: the drop in lands in a dead end, so the recruit stays on the rim. */
+    @GameTest(template = T, timeoutTicks = 420, batch = PIT_FALL_2)
     public static void partialPathNeverEndsInATwoDeepPitAtFallDistanceTwo(GameTestHelper helper) {
         pitB(helper, 2, 400);
     }
 
-    /** The same pit at fall distance 3. Optional: the recruit enters it until paths stop ending in pits. */
-    @GameTest(template = T, timeoutTicks = 420, required = false, batch = PIT_FALL_3)
+    /** The same pit at fall distance 3: the drop in lands in a dead end, so the recruit stays on the rim. */
+    @GameTest(template = T, timeoutTicks = 420, batch = PIT_FALL_3)
     public static void partialPathNeverEndsInATwoDeepPitAtFallDistanceThree(GameTestHelper helper) {
         pitB(helper, 3, 400);
+    }
+
+    /**
+     * The dead-end check doesn't keep a recruit from its owner: with the owner standing in a closed
+     * lower area (a two-block drop with no way back up, smaller than the search for a way out), the
+     * recruit at fall distance 2 drops in and reaches the owner, since the owner is what it's after.
+     */
+    @GameTest(template = T, timeoutTicks = 300, batch = PIT_FALL_2)
+    public static void aRecruitFollowsItsOwnerDownIntoAClosedLowerArea(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, 5, 3);
+        ground(helper, 6, CORRIDOR_X_MAX, 1);
+        daytime(helper);
+        ServerPlayer owner = owner(helper, 12.5, 1, 2.5);
+        pin(helper, owner, 12.5, 1, 2.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 2, 3, 2);
+        helper.runAfterDelay(1, () -> assertFollowPreconditions(recruit));
+        helper.succeedWhen(() -> {
+            if (recruit.distanceToSqr(owner) > 3.0 * 3.0) {
+                throw new GameTestAssertException("the recruit hasn't followed the owner down: at " + describe(helper, recruit)
+                        + "; " + navigationState(helper, recruit));
+            }
+            removeOwner(helper, owner);
+        });
     }
 
     /**

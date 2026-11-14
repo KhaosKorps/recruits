@@ -41,6 +41,7 @@ public final class KhaosKorpsServerConfig {
     public static final ForgeConfigSpec.BooleanValue EdgeMargin;
     public static final ForgeConfigSpec.IntValue EdgeMarginBlocks;
     public static final ForgeConfigSpec.DoubleValue EdgeCarefulSpeed;
+    public static final ForgeConfigSpec.IntValue DeadEndSearchNodes;
     public static final ForgeConfigSpec.BooleanValue WaitWhenOwnerUnreachable;
     public static final ForgeConfigSpec.BooleanValue DetourSearch;
     public static final ForgeConfigSpec.DoubleValue MovementSpeedMultiplier;
@@ -129,6 +130,12 @@ public final class KhaosKorpsServerConfig {
                 .comment("With EdgeMargin on, a recruit walking toward a path point right beside such a drop moves at this",
                         "fraction of its speed, so it can't carry over the edge. 1.0 = no slowdown.")
                 .defineInRange("EdgeCarefulSpeed", d.edgeCarefulSpeed(), 0.1, 1.0);
+        DeadEndSearchNodes = builder
+                .comment("With EdgeMargin on, a following recruit won't drop two or more blocks into a dead end: a closed area",
+                        "with no way back up, such as a pit, a small island or a ledge below a cliff. Before such a drop, it",
+                        "searches the landing area for a way out, up to this many walkable spots; an area that big, or with its",
+                        "owner in it, isn't a dead end. 0 turns the check off.")
+                .defineInRange("DeadEndSearchNodes", d.deadEndSearchNodes(), 0, 1024);
         WaitWhenOwnerUnreachable = builder
                 .comment("When no path reaches the owner and the best one ends at a drop, stop short of the edge and wait",
                         "instead of crowding it. On by default.")
@@ -212,7 +219,7 @@ public final class KhaosKorpsServerConfig {
                 FollowMaxPathLength.get(), SearchNodesPerBlock.get(),
                 DirtPathPreference.get(),
                 KeepWalkingWhileRepathing.get(), StaggerFollowRepaths.get(),
-                EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(),
+                EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(), DeadEndSearchNodes.get(),
                 WaitWhenOwnerUnreachable.get(), DetourSearch.get(),
                 MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(),
                 CreepersTargetRecruits.get(),

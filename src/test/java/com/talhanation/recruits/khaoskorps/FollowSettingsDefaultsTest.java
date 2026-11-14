@@ -71,6 +71,11 @@ class FollowSettingsDefaultsTest {
     }
 
     @Test
+    void theDeadEndCheckSearchesSixtyFourSpotsByDefault() {
+        assertEquals(64, d.deadEndSearchNodes(), "a closed area of about 8 by 8 or less counts as a dead end");
+    }
+
+    @Test
     void pathLoggingIsOffByDefault() {
         assertFalse(d.pathLog());
     }

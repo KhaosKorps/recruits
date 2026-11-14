@@ -50,6 +50,11 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     private int edgeMaxFall;
     private final Long2ByteOpenHashMap edgeDropColumns = newDropColumnCache();
     private final LongOpenHashSet edgeCostedNodes = new LongOpenHashSet();
+    // KhaosKorps fork: the dead-end check for this search (0 is off), its answers by landing spot, and the search's targets.
+    private int deadEndNodes;
+    private boolean checkingDeadEnd;
+    private final it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap deadEnds = new it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap();
+    private final java.util.List<BlockPos> goals = new java.util.ArrayList<>();
 
     /**
      * KhaosKorps fork: whether this search keeps away from edges: only while the mob follows its owner,
@@ -71,6 +76,7 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
         FollowSettings settings = FollowSettings.current(); // KhaosKorps fork
         this.edgeMargin = settings.edgeMargin() && this.edgeCareApplies(mob) ? settings.edgeMarginBlocks() : 0; // KhaosKorps fork
         this.edgeMaxFall = mob.getMaxFallDistance(); // KhaosKorps fork
+        this.deadEndNodes = this.edgeMargin > 0 ? settings.deadEndSearchNodes() : 0; // KhaosKorps fork: only where edge care applies
         this.dirtPath = settings.dirtPathPreference(); // KhaosKorps fork
         if(mob.isVehicle()){
             this.entityHeight = Mth.floor(mob.getBbHeight() + (float) getEntityHeight());
@@ -226,6 +232,8 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
         this.collisionCache.clear();
         this.edgeDropColumns.clear(); // KhaosKorps fork: per-search caches; this evaluator is reused from a pool
         this.edgeCostedNodes.clear();
+        this.deadEnds.clear(); // KhaosKorps fork
+        this.goals.clear(); // KhaosKorps fork
         super.done();
     }
 
@@ -286,6 +294,7 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     }
 
     public Target getGoal(double p_77550_, double p_77551_, double p_77552_) {
+        this.goals.add(new BlockPos(Mth.floor(p_77550_), Mth.floor(p_77551_), Mth.floor(p_77552_))); // KhaosKorps fork: for the dead-end check
         return this.getTargetFromNode(this.getNode(Mth.floor(p_77550_), Mth.floor(p_77551_), Mth.floor(p_77552_)));
     }
 
@@ -470,6 +479,11 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
                                     p_164726_, p_164727_, p_164728_, this.edgeMaxFall, 1, this.edgeDropColumns) == 1) {
                                 return null;
                             }
+                            // KhaosKorps fork: nor may it land in a dead end, a closed area with no way back up.
+                            if (j >= 2 && this.deadEndNodes > 0 && !this.checkingDeadEnd
+                                    && this.landsInADeadEnd(p_164726_, p_164727_, p_164728_, i)) {
+                                return null;
+                            }
                             node = this.getNodeAndUpdateCostToMax(p_164726_, p_164727_, p_164728_, blockpathtypes, f);
                             break;
                         }
@@ -492,6 +506,60 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
                 return node;
             }
         }
+    }
+
+    /**
+     * KhaosKorps fork: whether a drop from feet height {@code topY} landing at (x, y, z) lands in a dead
+     * end: a closed area of fewer than DeadEndSearchNodes walkable spots, with no way back up to
+     * {@code topY} and none of the search's targets in it, such as a pit, a small island or a ledge
+     * below a cliff. The area is searched breadth first with this evaluator's own walking rules (the
+     * same step-up and floor as getNeighbors, without its check against nodes the main search has
+     * already closed), once per landing spot per search; drops met while searching aren't checked.
+     */
+    private boolean landsInADeadEnd(int x, int y, int z, int topY) {
+        long key = BlockPos.asLong(x, y, z);
+        if (this.deadEnds.containsKey(key)) return this.deadEnds.get(key);
+        boolean deadEnd;
+        this.checkingDeadEnd = true;
+        try {
+            deadEnd = this.noWayOut(x, y, z, topY);
+        } finally {
+            this.checkingDeadEnd = false;
+        }
+        this.deadEnds.put(key, deadEnd);
+        return deadEnd;
+    }
+
+    private boolean noWayOut(int x, int y, int z, int topY) {
+        LongOpenHashSet seen = new LongOpenHashSet();
+        java.util.ArrayDeque<BlockPos> frontier = new java.util.ArrayDeque<>();
+        BlockPos start = new BlockPos(x, y, z);
+        frontier.add(start);
+        seen.add(start.asLong());
+        while (!frontier.isEmpty()) {
+            BlockPos at = frontier.poll();
+            if (at.getY() >= topY || this.nearAGoal(at) || seen.size() >= this.deadEndNodes) return false;
+            BlockPathTypes above = this.getCachedBlockType(this.mob, at.getX(), at.getY() + 1, at.getZ());
+            BlockPathTypes here = this.getCachedBlockType(this.mob, at.getX(), at.getY(), at.getZ());
+            int stepUp = this.mob.getPathfindingMalus(above) >= 0.0F && here != BlockPathTypes.STICKY_HONEY
+                    ? Mth.floor(Math.max(1.0F, this.mob.getStepHeight())) : 0;
+            double floor = this.getFloorLevel(at);
+            for (Direction direction : HORIZONTAL) {
+                Node next = this.findAcceptedNode(at.getX() + direction.getStepX(), at.getY(), at.getZ() + direction.getStepZ(),
+                        stepUp, floor, direction, here);
+                if (next == null || next.costMalus < 0.0F) continue;
+                if (seen.add(BlockPos.asLong(next.x, next.y, next.z))) frontier.add(new BlockPos(next.x, next.y, next.z));
+            }
+        }
+        return true;
+    }
+
+    /** KhaosKorps fork: whether a spot is within a block of one of the search's targets. */
+    private boolean nearAGoal(BlockPos at) {
+        for (BlockPos goal : this.goals) {
+            if (Math.abs(goal.getX() - at.getX()) <= 1 && Math.abs(goal.getY() - at.getY()) <= 1 && Math.abs(goal.getZ() - at.getZ()) <= 1) return true;
+        }
+        return false;
     }
 
     private double getMobJumpHeight() {

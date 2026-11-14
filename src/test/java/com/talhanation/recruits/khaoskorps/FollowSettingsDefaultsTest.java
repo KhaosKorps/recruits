@@ -64,6 +64,13 @@ class FollowSettingsDefaultsTest {
     }
 
     @Test
+    void theAlwaysOnChecksRunAsOftenAsIn1152() {
+        assertEquals(2, d.fireCheckTicks(), "1.15.2 checks for fire every time the goal runs, every second tick");
+        assertEquals(2, d.tntCheckTicks(), "1.15.2 checks for lit TNT every time the goal runs");
+        assertEquals(2, d.villageDefenceCheckTicks(), "1.15.2 checks for village attackers every goal selection pass");
+    }
+
+    @Test
     void pathLoggingIsOffByDefault() {
         assertFalse(d.pathLog());
     }

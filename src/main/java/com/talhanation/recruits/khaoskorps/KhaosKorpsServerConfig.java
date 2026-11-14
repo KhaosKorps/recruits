@@ -46,6 +46,9 @@ public final class KhaosKorpsServerConfig {
     public static final ForgeConfigSpec.DoubleValue MovementSpeedMultiplier;
     public static final ForgeConfigSpec.DoubleValue SwimSpeedMultiplier;
     public static final ForgeConfigSpec.BooleanValue PathLog;
+    public static final ForgeConfigSpec.IntValue FireCheckTicks;
+    public static final ForgeConfigSpec.IntValue TntCheckTicks;
+    public static final ForgeConfigSpec.IntValue VillageDefenceCheckTicks;
 
     static {
         FollowSettings d = FollowSettings.DEFAULTS;
@@ -146,6 +149,23 @@ public final class KhaosKorpsServerConfig {
                 .define("PathLog", d.pathLog());
         builder.pop();
 
+        builder.comment("How often each recruit runs its always-on checks, in ticks (20 = 1 second), staggered by recruit so",
+                "a crowd doesn't check all at once. 2 = every time the check's goal runs, as in Recruits 1.15.2. Longer",
+                "means less server work per recruit and a slower reaction. Each applies as soon as this file is saved.").push("checks");
+        FireCheckTicks = builder
+                .comment("Ticks between a recruit's checks for nearby fire and lava to flee from. Once it finds some, it checks",
+                        "every time until none is left, so it keeps moving away.")
+                .defineInRange("FireCheckTicks", d.fireCheckTicks(), 2, 200);
+        TntCheckTicks = builder
+                .comment("Ticks between a recruit's checks for lit TNT to flee from. Once it finds some, it checks every time",
+                        "until none is left, so it keeps moving away.")
+                .defineInRange("TntCheckTicks", d.tntCheckTicks(), 2, 200);
+        VillageDefenceCheckTicks = builder
+                .comment("Ticks between a recruit's checks for players that villagers on its side near it hate (reputation -100",
+                        "or lower), to make one its target.")
+                .defineInRange("VillageDefenceCheckTicks", d.villageDefenceCheckTicks(), 2, 200);
+        builder.pop();
+
         SPEC = builder.build();
     }
 
@@ -193,6 +213,7 @@ public final class KhaosKorpsServerConfig {
                 WaitWhenOwnerUnreachable.get(), DetourSearch.get(),
                 MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(),
                 CreepersTargetRecruits.get(),
+                FireCheckTicks.get(), TntCheckTicks.get(), VillageDefenceCheckTicks.get(),
                 PathLog.get());
     }
 }

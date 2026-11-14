@@ -2,18 +2,21 @@ package com.talhanation.recruits.entities.ai;
 
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.entities.AssassinEntity;
+import com.talhanation.recruits.khaoskorps.CheckThrottle;
+import com.talhanation.recruits.khaoskorps.FollowSettings;
 import com.talhanation.recruits.pathfinding.AsyncPathfinderMob;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.phys.Vec3;
-
-import java.util.Random;
 
 public class FleeFire extends Goal {
 
     AsyncPathfinderMob entity;
     BlockPos fleePos;
+    private final CheckThrottle throttle = new CheckThrottle(); // KhaosKorps fork: FireCheckTicks
+    private boolean fireFound; // KhaosKorps fork: fire or lava was found at the last check
 
     public FleeFire(AsyncPathfinderMob entity) {
     this.entity = entity;
@@ -27,7 +30,10 @@ public class FleeFire extends Goal {
     @Override
     public void tick() {
         super.tick();
-        if (isNearLava()) {
+        // KhaosKorps fork: FireCheckTicks: checks run at the set interval; once fire is found, every time until none is.
+        if (!this.fireFound && !this.throttle.dueEveryTicks(FollowSettings.current().fireCheckTicks(), this.entity.getId())) return;
+        this.fireFound = isNearLava(); // KhaosKorps fork
+        if (this.fireFound) {
             double fleeDistance = 4D;
             Vec3 vecTarget = new Vec3(fleePos.getX(), fleePos.getY(), fleePos.getZ());
             Vec3 vecRec = new Vec3(entity.getX(), entity.getY(), entity.getZ());
@@ -57,7 +63,7 @@ public class FleeFire extends Goal {
 
 
 public boolean isNearLava() {
-        Random random = new Random();
+        RandomSource random = this.entity.getRandom(); // KhaosKorps fork: was a new Random on every check
         int range = 4;
 
             for(int i = 0; i < 15; i++){

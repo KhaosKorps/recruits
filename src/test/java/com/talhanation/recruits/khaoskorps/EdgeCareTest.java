@@ -43,6 +43,7 @@ class EdgeCareTest {
                 d.followSpeed(), d.followMaxPathLength(), d.searchNodesPerBlock(), d.dirtPathPreference(),
                 d.keepWalkingWhileRepathing(), d.staggerFollowRepaths(),
                 on, d.edgeMarginBlocks(), d.edgeCarefulSpeed(), d.waitWhenOwnerUnreachable(), d.detourSearch(),
-                d.movementSpeedMultiplier(), d.swimSpeedMultiplier(), d.creepersTargetRecruits(), d.pathLog());
+                d.movementSpeedMultiplier(), d.swimSpeedMultiplier(), d.creepersTargetRecruits(),
+                d.fireCheckTicks(), d.tntCheckTicks(), d.villageDefenceCheckTicks(), d.pathLog());
     }
 }

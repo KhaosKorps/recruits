@@ -2,6 +2,8 @@ package com.talhanation.recruits.entities.ai;
 
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.entities.AssassinEntity;
+import com.talhanation.recruits.khaoskorps.CheckThrottle;
+import com.talhanation.recruits.khaoskorps.FollowSettings;
 import com.talhanation.recruits.pathfinding.AsyncPathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.item.PrimedTnt;
@@ -13,6 +15,8 @@ public class FleeTNT extends Goal {
 
     private final AsyncPathfinderMob entity;
     private int cooldown = 0;
+    private final CheckThrottle throttle = new CheckThrottle(); // KhaosKorps fork: TntCheckTicks
+    private boolean tntFound; // KhaosKorps fork: lit TNT was in range at the last check
 
     public FleeTNT(AsyncPathfinderMob creatureEntity) {
         this.entity = creatureEntity;
@@ -25,10 +29,13 @@ public class FleeTNT extends Goal {
 
     @Override
     public void tick() {
+        // KhaosKorps fork: TntCheckTicks: checks run at the set interval; once lit TNT is found, every time until it's gone.
+        if (!this.tntFound && !this.throttle.dueEveryTicks(FollowSettings.current().tntCheckTicks(), this.entity.getId())) return;
         List<PrimedTnt> tntEntities = entity.getCommandSenderWorld().getEntitiesOfClass(
                 PrimedTnt.class,
                 entity.getBoundingBox().inflate(10D)
         );
+        this.tntFound = !tntEntities.isEmpty(); // KhaosKorps fork
         if (tntEntities.isEmpty()) {
             setFleeing(false);
             return;

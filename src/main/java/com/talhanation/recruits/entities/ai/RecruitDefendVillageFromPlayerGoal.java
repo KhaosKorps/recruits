@@ -1,6 +1,8 @@
 package com.talhanation.recruits.entities.ai;
 
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
+import com.talhanation.recruits.khaoskorps.CheckThrottle;
+import com.talhanation.recruits.khaoskorps.FollowSettings;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.target.TargetGoal;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
@@ -17,6 +19,7 @@ public class RecruitDefendVillageFromPlayerGoal extends TargetGoal {
     @Nullable
     private LivingEntity potentialTarget;
     private final TargetingConditions attackTargeting = TargetingConditions.forCombat().range(64.0D).ignoreLineOfSight();
+    private final CheckThrottle throttle = new CheckThrottle(); // KhaosKorps fork: VillageDefenceCheckTicks
 
     public RecruitDefendVillageFromPlayerGoal(AbstractRecruitEntity p_26029_) {
         super(p_26029_, false, true);
@@ -24,6 +27,8 @@ public class RecruitDefendVillageFromPlayerGoal extends TargetGoal {
         this.setFlags(EnumSet.of(Flag.TARGET));
     }
     public boolean canUse() {
+        // KhaosKorps fork: VillageDefenceCheckTicks: the two area searches below run at the set interval.
+        if (!this.throttle.dueEveryTicks(FollowSettings.current().villageDefenceCheckTicks(), this.recruit.getId())) return false;
         AABB aabb = this.recruit.getBoundingBox().inflate(30.0D, 8.0D, 30.0D);
         List<Villager> list = this.recruit.getCommandSenderWorld().getEntitiesOfClass(Villager.class, aabb, (livingEntity) -> !this.attackTargeting.test(this.recruit, livingEntity));
 

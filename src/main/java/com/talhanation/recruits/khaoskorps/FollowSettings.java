@@ -32,6 +32,9 @@ public record FollowSettings(
         double movementSpeedMultiplier,
         double swimSpeedMultiplier,
         boolean creepersTargetRecruits,
+        int fireCheckTicks,
+        int tntCheckTicks,
+        int villageDefenceCheckTicks,
         boolean pathLog) {
 
     /** How strongly paths prefer dirt paths (RecruitsPathNodeEvaluator.getNode). */
@@ -58,6 +61,7 @@ public record FollowSettings(
             true,
             1.0, 1.0,
             false,
+            2, 2, 2,
             false);
 
     private static volatile FollowSettings current = DEFAULTS;

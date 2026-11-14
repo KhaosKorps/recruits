@@ -172,7 +172,8 @@ public abstract class AbstractRecruitEntity extends AbstractInventoryEntity{
     }
 
     public int getMaxFallDistance() {
-        return maxFallDistance;
+        // KhaosKorps fork: the server setting wins over the recruit's own value, which stays in the save untouched.
+        return com.talhanation.recruits.khaoskorps.FollowSettings.current().maxFallDistance();
     }
 
     public void setMaxFallDistance(int x){
@@ -438,7 +439,7 @@ public abstract class AbstractRecruitEntity extends AbstractInventoryEntity{
         nbt.putInt("upkeepTimer", this.getUpkeepTimer());
         nbt.putInt("Color", this.getColor());
         nbt.putInt("Biome", this.getBiome());
-        nbt.putInt("MaxFallDistance", this.getMaxFallDistance());
+        nbt.putInt("MaxFallDistance", this.maxFallDistance); // KhaosKorps fork: the recruit's own value, not the setting (rollback-safe)
         nbt.putInt("formationPos", formationPos);
         nbt.putBoolean("ShouldRest", this.getShouldRest());
         nbt.putBoolean("ShouldRanged", this.getShouldRanged());

@@ -147,14 +147,34 @@ public class FollowBaselineGameTests {
         pitB(helper, 1, 300);
     }
 
-    /** Nena's G4-3 at fall distance 2: expected to fail today (N2), so optional. */
-    @GameTest(template = T, timeoutTicks = 420, required = false)
+    private static final String PIT_FALL_2 = "khaoskorps_pit_fall_2";
+    private static final String PIT_FALL_3 = "khaoskorps_pit_fall_3";
+
+    @net.minecraft.gametest.framework.BeforeBatch(batch = PIT_FALL_2)
+    public static void fallDistanceTwo(net.minecraft.server.level.ServerLevel level) { setFallDistance(2); }
+
+    @net.minecraft.gametest.framework.AfterBatch(batch = PIT_FALL_2)
+    public static void afterFallDistanceTwo(net.minecraft.server.level.ServerLevel level) { setFallDistance(1); }
+
+    @net.minecraft.gametest.framework.BeforeBatch(batch = PIT_FALL_3)
+    public static void fallDistanceThree(net.minecraft.server.level.ServerLevel level) { setFallDistance(3); }
+
+    @net.minecraft.gametest.framework.AfterBatch(batch = PIT_FALL_3)
+    public static void afterFallDistanceThree(net.minecraft.server.level.ServerLevel level) { setFallDistance(1); }
+
+    private static void setFallDistance(int blocks) {
+        com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.MaxFallDistance.set(blocks);
+        com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.republish();
+    }
+
+    /** Nena's G4-3 at fall distance 2: expected to fail until the pit fix (N2), so optional. */
+    @GameTest(template = T, timeoutTicks = 420, required = false, batch = PIT_FALL_2)
     public static void partialPathNeverEndsInATwoDeepPitAtFallDistanceTwo(GameTestHelper helper) {
         pitB(helper, 2, 400);
     }
 
-    /** Nena's G4-3 at fall distance 3: expected to fail today (N2), so optional. */
-    @GameTest(template = T, timeoutTicks = 420, required = false)
+    /** Nena's G4-3 at fall distance 3: expected to fail until the pit fix (N2), so optional. */
+    @GameTest(template = T, timeoutTicks = 420, required = false, batch = PIT_FALL_3)
     public static void partialPathNeverEndsInATwoDeepPitAtFallDistanceThree(GameTestHelper helper) {
         pitB(helper, 3, 400);
     }
@@ -174,8 +194,7 @@ public class FollowBaselineGameTests {
         ServerPlayer owner = owner(helper, 12.5, 3, 2.5);
         pin(helper, owner, 12.5, 3, 2.5);
         AbstractRecruitEntity recruit = followingRecruit(helper, owner, 2, 3, 2);
-        // Follow never overwrites this: the only reset is the positional moveTo (RecruitPathNavigation.java:51).
-        recruit.setMaxFallDistance(fallDistance);
+        // The fall distance comes from the batch's server setting, which wins over the recruit's own value.
 
         helper.runAfterDelay(1, () -> assertFollowPreconditions(recruit));
         helper.onEachTick(() -> {

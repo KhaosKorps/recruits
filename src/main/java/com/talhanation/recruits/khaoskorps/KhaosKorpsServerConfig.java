@@ -150,6 +150,11 @@ public final class KhaosKorpsServerConfig {
         }
     }
 
+    /** Republishes the snapshot after a value was changed in code (tests, commands). Server thread only. */
+    public static void republish() {
+        FollowSettings.publish(snapshot());
+    }
+
     /** Copies the loaded config into an immutable snapshot. Server thread only. */
     static FollowSettings snapshot() {
         double start = FollowStartDistance.get();

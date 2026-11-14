@@ -29,7 +29,7 @@ public class MobMixin {
     @Inject(method = "getMaxFallDistance", at = @At(value = "HEAD", target = "Lnet/minecraft/world/entity/Mob;getMaxFallDistance()I"), cancellable = true)
     private void getMaxFallDistance(CallbackInfoReturnable<Integer> callback){
         if(((Mob)(Object)this) instanceof AbstractHorse horse && horse.getFirstPassenger() instanceof AbstractRecruitEntity && !(((Mob)(Object)this) instanceof SkeletonHorse)){
-            callback.setReturnValue(1);
+            callback.setReturnValue(com.talhanation.recruits.khaoskorps.FollowSettings.current().mountedMaxFallDistance()); // KhaosKorps fork: was 1
         }
     }
 }

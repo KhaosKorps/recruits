@@ -1,156 +1,85 @@
 package com.talhanation.recruits.khaoskorps.gametest;
 
 import com.talhanation.recruits.entities.ai.navigation.RecruitsPathNodeEvaluator;
-import com.talhanation.recruits.khaoskorps.EdgeCost;
-import com.talhanation.recruits.khaoskorps.EdgeProbe;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.level.PathNavigationRegion;
 import net.minecraft.world.level.pathfinder.BlockPathTypes;
 import net.minecraft.world.level.pathfinder.Node;
-
-import java.util.ArrayList;
-import java.util.List;
+import net.minecraft.world.level.pathfinder.Target;
 
 /**
- * The recruit evaluator with a recorder on it, for watching one real search: every point the A*
- * takes off its open set, the candidates it asks the evaluator for around that point (accepted,
- * refused or blocked), the neighbours it gets back with their costs, and how the search updated
- * each neighbour. It only observes: every rule is the real evaluator's, run by the real
- * {@code AsyncPathfinder}. Edge care applies, as for a following recruit.
- *
- * Recording happens on whichever thread runs the search; read {@link #pops} only after the search
- * has finished.
+ * The recruit evaluator with a {@link SearchTracer} on it: every rule is the real evaluator's, run by
+ * the real path finder; the tracer only records what they compute.
  */
 final class TracingEvaluator extends RecruitsPathNodeEvaluator {
 
-    /** One candidate step the evaluator was asked about. */
-    record Candidate(String direction, int askX, int askY, int askZ, String result, int x, int y, int z, float costMalus,
-                     int deadEndSteps) {
+    private final boolean forceEdgeCare;
+    private final SearchTracer.Sink sink;
+    private final SearchTracer tracer = new SearchTracer();
+
+    /**
+     * @param forceEdgeCare true to search as a following recruit does whatever the mob is doing (a
+     *                      standalone search); false to keep the real rule, so a recruit's own searches
+     *                      get edge care only while it follows
+     * @param sink          where each search's record goes
+     */
+    TracingEvaluator(boolean forceEdgeCare, SearchTracer.Sink sink) {
+        this.forceEdgeCare = forceEdgeCare;
+        this.sink = sink;
+        this.setCanOpenDoors(true);
+        this.setCanPassDoors(true);
+        this.setCanFloat(true);
     }
-
-    /** One neighbour the search got back, with its state before and after the search's update. */
-    static final class Neighbour {
-        final Node node;
-        final int x, y, z;
-        final float costMalus;
-        final float gBefore;
-        final boolean openBefore;
-        float gAfter, hAfter, fAfter;
-        boolean updated;
-
-        Neighbour(Node node) {
-            this.node = node;
-            this.x = node.x;
-            this.y = node.y;
-            this.z = node.z;
-            this.costMalus = node.costMalus;
-            this.gBefore = node.g;
-            this.openBefore = node.inOpenSet();
-        }
-    }
-
-    /** One point taken off the open set. */
-    static final class Pop {
-        final int x, y, z;
-        final float g, h, f;
-        final int[] from;
-        final String ring;
-        final int edgeDistance;
-        final float edgeCost;
-        final float costMalus;
-        final List<Candidate> candidates = new ArrayList<>();
-        final List<Neighbour> neighbours = new ArrayList<>();
-
-        Pop(Node node, String ring, int edgeDistance, float edgeCost) {
-            this.x = node.x;
-            this.y = node.y;
-            this.z = node.z;
-            this.g = node.g;
-            this.h = node.h;
-            this.f = node.f;
-            this.from = node.cameFrom == null ? null : new int[]{node.cameFrom.x, node.cameFrom.y, node.cameFrom.z};
-            this.ring = ring;
-            this.edgeDistance = edgeDistance;
-            this.edgeCost = edgeCost;
-            this.costMalus = node.costMalus;
-        }
-    }
-
-    final List<Pop> pops = new ArrayList<>();
-    private Pop current;
-    private int depth;
-    private int deadEndSteps;
-    private int margin;
-    private int maxFall;
 
     @Override
     protected boolean edgeCareApplies(Mob mob) {
-        return true;
+        return this.forceEdgeCare || super.edgeCareApplies(mob);
     }
 
     @Override
-    public void prepare(net.minecraft.world.level.PathNavigationRegion region, Mob mob) {
+    public void prepare(PathNavigationRegion region, Mob mob) {
         super.prepare(region, mob);
-        this.margin = com.talhanation.recruits.khaoskorps.FollowSettings.current().edgeMarginBlocks();
-        this.maxFall = mob.getMaxFallDistance();
+        this.tracer.begin(this.sink, "follow", mob, this.edgeCareApplies(mob));
+    }
+
+    @Override
+    public Node getStart() {
+        Node start = super.getStart();
+        this.tracer.start(start);
+        return start;
+    }
+
+    @Override
+    public Target getGoal(double x, double y, double z) {
+        Target target = super.getGoal(x, y, z);
+        this.tracer.goal(target);
+        return target;
     }
 
     @Override
     public int getNeighbors(Node[] neighbours, Node node) {
-        this.settlePrevious(node);
-        StringBuilder ring = new StringBuilder();
-        for (int r = 1; r <= this.margin; r++) {
-            for (int dx = -r; dx <= r; dx++) {
-                for (int dz = -r; dz <= r; dz++) {
-                    if (Math.max(Math.abs(dx), Math.abs(dz)) != r) continue;
-                    ring.append(EdgeProbe.isDangerousDropFrom(this.level, node.x, node.y, node.z, dx, dz, this.maxFall) ? 'D' : '.');
-                }
-            }
-        }
-        int distance = EdgeProbe.distanceToDangerousDrop(this.level, node.x, node.y, node.z, this.maxFall, this.margin, null);
-        this.current = new Pop(node, ring.toString(), distance, EdgeCost.malus(distance, this.margin));
-        this.pops.add(this.current);
+        boolean record = this.tracer.beforeNeighbours(this.level, node);
         int count = super.getNeighbors(neighbours, node);
-        for (int i = 0; i < count; i++) this.current.neighbours.add(new Neighbour(neighbours[i]));
+        if (record) this.tracer.afterNeighbours(neighbours, count);
         return count;
     }
 
     @Override
     protected Node findAcceptedNode(int x, int y, int z, int stepUp, double floor, Direction direction, BlockPathTypes type) {
-        boolean outer = this.depth == 0;
-        if (outer) this.deadEndSteps = 0;
-        else this.deadEndSteps++;
-        this.depth++;
-        Node node;
+        boolean outer = this.tracer.enterAccepted();
+        Node node = null;
         try {
             node = super.findAcceptedNode(x, y, z, stepUp, floor, direction, type);
         } finally {
-            this.depth--;
-        }
-        if (outer && this.current != null) {
-            String result = node == null ? "refused" : node.costMalus < 0 ? "blocked" : "accepted";
-            this.current.candidates.add(new Candidate(direction.getName(), x, y, z, result,
-                    node == null ? x : node.x, node == null ? y : node.y, node == null ? z : node.z,
-                    node == null ? 0 : node.costMalus, this.deadEndSteps));
+            this.tracer.exitAccepted(outer, x, y, z, direction, node);
         }
         return node;
     }
 
-    /** Reads how the search updated the previous point's neighbours, once it moves on to the next point. */
-    private void settlePrevious(Node next) {
-        if (this.current == null) return;
-        for (Neighbour n : this.current.neighbours) {
-            n.gAfter = n.node.g;
-            n.hAfter = n.node.h;
-            n.fAfter = n.node.f;
-            Node from = n.node.cameFrom;
-            n.updated = from != null && from.x == this.current.x && from.y == this.current.y && from.z == this.current.z
-                    && (n.gAfter != n.gBefore || !n.openBefore);
-        }
-    }
-
-    /** Settles the last point's neighbours; call once the search has finished. */
-    void finish() {
-        this.settlePrevious(null);
+    @Override
+    public void done() {
+        this.tracer.done(this.nodes.values());
+        super.done();
     }
 }

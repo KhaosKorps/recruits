@@ -66,7 +66,22 @@ public class PathTraceGameTests {
         RavineTerrain terrain = new RavineTerrain(1);
         terrain.build(helper);
         BlockPos origin = helper.absolutePos(BlockPos.ZERO);
-        List<TracingEvaluator> tracers = new ArrayList<>();
+        List<SearchTracer.SearchRecord> recorded = java.util.Collections.synchronizedList(new ArrayList<>());
+        SearchTracer.Sink sink = new SearchTracer.Sink() {
+            @Override
+            public void prepared(SearchTracer.SearchRecord record) {
+                recorded.add(record);
+            }
+
+            @Override
+            public boolean detail(SearchTracer.SearchRecord record) {
+                return true;
+            }
+
+            @Override
+            public void finished(SearchTracer.SearchRecord record) {
+            }
+        };
         List<Path> paths = new ArrayList<>();
         List<AbstractRecruitEntity> recruits = new ArrayList<>();
         helper.runAtTickTime(2, () -> {
@@ -80,10 +95,7 @@ public class PathTraceGameTests {
                 recruit.setNoAi(true);
                 recruit.setOnGround(true);
                 recruits.add(recruit);
-                TracingEvaluator tracer = new TracingEvaluator();
-                tracer.setCanOpenDoors(true);
-                tracer.setCanPassDoors(true);
-                tracer.setCanFloat(true);
+                TracingEvaluator tracer = new TracingEvaluator(true, sink);
                 AsyncPathfinder finder = new AsyncPathfinder(tracer, BUDGET, () -> tracer, helper.getLevel());
                 BlockPos from = recruit.blockPosition().above();
                 int reach = RANGE + 16;
@@ -91,7 +103,6 @@ public class PathTraceGameTests {
                 BlockPos target = helper.absolutePos(new BlockPos(search.toX(), terrain.stand[search.toX()][search.toZ()], search.toZ()));
                 Path path = finder.findPath(region, recruit, ImmutableSet.of(target), RANGE, 1, 1.0F);
                 if (path == null) throw new GameTestAssertException("no search started for: " + search.name());
-                tracers.add(tracer);
                 paths.add(path);
             }
         });
@@ -100,15 +111,16 @@ public class PathTraceGameTests {
             for (Path path : paths) if (path instanceof AsyncPath async && !async.isProcessed()) return;
             recruits.forEach(AbstractRecruitEntity::discard);
             StringBuilder json = new StringBuilder();
+            if (recorded.size() < SEARCHES.size()) return;
+            for (SearchTracer.SearchRecord record : recorded) if (!record.finished) return;
             json.append("{\"seed\":1,\"size\":[64,24,64],\"maxFall\":3,\"margin\":").append(FollowSettings.current().edgeMarginBlocks())
                     .append(",\"range\":").append(RANGE).append(",\"budget\":").append(BUDGET)
-                    .append(",\"blocks\":\"").append(blocks(helper)).append("\",\"searches\":[");
+                    .append(",\"blocks\":\"").append(RunRecorder.blocks(helper)).append("\",\"searches\":[");
             for (int i = 0; i < SEARCHES.size(); i++) {
                 if (i > 0) json.append(',');
-                TracingEvaluator tracer = tracers.get(i);
-                tracer.finish();
-                if (tracer.pops.isEmpty()) throw new GameTestAssertException("nothing recorded for: " + SEARCHES.get(i).name());
-                search(json, SEARCHES.get(i), terrain, tracer, paths.get(i), origin);
+                SearchTracer.SearchRecord record = recorded.get(i);
+                if (record.pops.isEmpty()) throw new GameTestAssertException("nothing recorded for: " + SEARCHES.get(i).name());
+                search(json, SEARCHES.get(i), terrain, record, paths.get(i), origin);
             }
             json.append("]}");
             java.nio.file.Path file = java.nio.file.Path.of("pathtrace", "ravine-seed1.json").toAbsolutePath();
@@ -123,25 +135,7 @@ public class PathTraceGameTests {
         });
     }
 
-    /** Every block of the arena, x fastest, then z, then y: '#' something to stand on or bump into, 'w' water, 'l' lava, '.' open. */
-    private static String blocks(GameTestHelper helper) {
-        StringBuilder out = new StringBuilder(64 * 24 * 64);
-        for (int y = 0; y < 24; y++) {
-            for (int z = 0; z < 64; z++) {
-                for (int x = 0; x < 64; x++) {
-                    BlockPos pos = helper.absolutePos(new BlockPos(x, y, z));
-                    BlockState state = helper.getLevel().getBlockState(pos);
-                    if (state.getFluidState().is(net.minecraft.tags.FluidTags.LAVA)) out.append('l');
-                    else if (state.getFluidState().is(net.minecraft.tags.FluidTags.WATER)) out.append('w');
-                    else if (!state.getCollisionShape(helper.getLevel(), pos).isEmpty()) out.append('#');
-                    else out.append('.');
-                }
-            }
-        }
-        return out.toString();
-    }
-
-    private static void search(StringBuilder json, Search search, RavineTerrain terrain, TracingEvaluator tracer, Path path, BlockPos origin) {
+    private static void search(StringBuilder json, Search search, RavineTerrain terrain, SearchTracer.SearchRecord tracer, Path path, BlockPos origin) {
         json.append("{\"name\":\"").append(search.name()).append("\",\"dirtPath\":\"").append(search.dirtPath())
                 .append("\",\"start\":").append(xyz(search.fromX(), terrain.stand[search.fromX()][search.fromZ()], search.fromZ()))
                 .append(",\"target\":").append(xyz(search.toX(), terrain.stand[search.toX()][search.toZ()], search.toZ()))
@@ -153,16 +147,16 @@ public class PathTraceGameTests {
         }
         json.append("],\"pops\":[");
         for (int p = 0; p < tracer.pops.size(); p++) {
-            TracingEvaluator.Pop pop = tracer.pops.get(p);
+            SearchTracer.Pop pop = tracer.pops.get(p);
             if (p > 0) json.append(',');
             json.append("{\"p\":").append(xyz(pop.x - origin.getX(), pop.y - origin.getY(), pop.z - origin.getZ()))
                     .append(",\"g\":").append(num(pop.g)).append(",\"h\":").append(num(pop.h)).append(",\"f\":").append(num(pop.f))
                     .append(",\"m\":").append(num(pop.costMalus)).append(",\"ed\":").append(pop.edgeDistance).append(",\"ec\":").append(num(pop.edgeCost))
-                    .append(",\"ring\":\"").append(pop.ring).append('"');
+                    .append(",\"ring\":\"").append(pop.expanded ? pop.ring : "-").append('"');
             if (pop.from != null) json.append(",\"from\":").append(xyz(pop.from[0] - origin.getX(), pop.from[1] - origin.getY(), pop.from[2] - origin.getZ()));
             json.append(",\"cand\":[");
             for (int c = 0; c < pop.candidates.size(); c++) {
-                TracingEvaluator.Candidate cand = pop.candidates.get(c);
+                SearchTracer.Candidate cand = pop.candidates.get(c);
                 if (c > 0) json.append(',');
                 json.append("{\"d\":\"").append(cand.direction()).append("\",\"ask\":")
                         .append(xyz(cand.askX() - origin.getX(), cand.askY() - origin.getY(), cand.askZ() - origin.getZ()))
@@ -172,7 +166,7 @@ public class PathTraceGameTests {
             }
             json.append("],\"nb\":[");
             for (int n = 0; n < pop.neighbours.size(); n++) {
-                TracingEvaluator.Neighbour nb = pop.neighbours.get(n);
+                SearchTracer.Neighbour nb = pop.neighbours.get(n);
                 if (n > 0) json.append(',');
                 json.append("{\"p\":").append(xyz(nb.x - origin.getX(), nb.y - origin.getY(), nb.z - origin.getZ()))
                         .append(",\"m\":").append(num(nb.costMalus)).append(",\"g0\":").append(num(nb.gBefore))

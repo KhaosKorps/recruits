@@ -67,9 +67,9 @@ public boolean isNearLava() {
         int range = 4;
 
             for(int i = 0; i < 15; i++){
-                BlockPos blockPos = new BlockPos((int) entity.getX(), (int) entity.getY(), (int) entity.getZ());
+                BlockPos blockPos = entity.blockPosition(); // KhaosKorps fork: was new BlockPos((int) x, (int) y, (int) z), a block off at negative coordinates
                 BlockPos blockpos1 = blockPos.offset(random.nextInt(range) - range/2, 3, random.nextInt(range) - range/2);
-                while(this.entity.getCommandSenderWorld().isEmptyBlock(blockpos1) && blockpos1.getY() > 1){
+                while(this.entity.getCommandSenderWorld().isEmptyBlock(blockpos1) && blockpos1.getY() > this.entity.getCommandSenderWorld().getMinBuildHeight()){ // KhaosKorps fork: was > 1, blind below y 2
                 blockpos1 = blockpos1.below();
                 }
                 if(this.entity.getCommandSenderWorld().getFluidState(blockpos1).is(FluidTags.LAVA) || this.entity.getCommandSenderWorld().getBlockState(blockpos1).isBurning(entity.getCommandSenderWorld(), blockpos1)){

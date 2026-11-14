@@ -78,6 +78,16 @@ public class CheckThrottleGameTests {
         reactsAtOnce(helper, fire(helper, false), "fire overhead on both sides");
     }
 
+    /**
+     * The fire check works at any depth: lava in the floor right beside the recruit, here at the test
+     * world's depth (below y 0), is found and fled. The check used to walk its samples down only while
+     * above y 1, so below that it looked only three blocks over the recruit's head.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 40)
+    public static void aRecruitFleesLavaInTheFloorBesideItAtAnyDepth(GameTestHelper helper) {
+        reactsAtOnce(helper, lavaInTheFloor(helper), "lava in the floor beside it");
+    }
+
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 180, batch = SLOW)
     public static void withFireChecksEvery100TicksARecruitReactsAtItsOwnCheck(GameTestHelper helper) {
         reactsAtItsOwnCheck(helper, fire(helper, true), "FireCheckTicks");
@@ -189,6 +199,21 @@ public class CheckThrottleGameTests {
                     helper.setBlock(x, 6, z, Blocks.AIR);
                     helper.setBlock(x, 5, z, Blocks.AIR);
                 }
+            }
+        });
+    }
+
+    /** Lava fills the floor at x 3 and 4, across the corridor, level with the stone the recruit stands on at x 5. */
+    private static Scene lavaInTheFloor(GameTestHelper helper) {
+        AbstractRecruitEntity recruit = recruit(helper, 5, false);
+        recruit.setAggroState(3);
+        for (int x = 3; x <= 4; x++) {
+            for (int z = CORRIDOR_Z_MIN; z <= CORRIDOR_Z_MAX; z++) helper.setBlock(x, 2, z, Blocks.LAVA);
+        }
+        return new Scene(recruit, () -> hasAPath(recruit), () -> {
+            recruit.discard();
+            for (int x = 3; x <= 4; x++) {
+                for (int z = CORRIDOR_Z_MIN; z <= CORRIDOR_Z_MAX; z++) helper.setBlock(x, 2, z, Blocks.STONE);
             }
         });
     }

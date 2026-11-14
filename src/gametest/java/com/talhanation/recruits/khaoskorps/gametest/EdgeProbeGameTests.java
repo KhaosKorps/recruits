@@ -52,13 +52,28 @@ public class EdgeProbeGameTests {
         helper.succeed();
     }
 
+    /**
+     * A drop behind a wall doesn't count: a mob can't reach it. Outside the barrier walls the
+     * template is open down to the world's floor, so from three blocks in, the only drops within
+     * three blocks lie behind the wall.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
+    public static void aDropBehindAWallIsNotCounted(GameTestHelper helper) {
+        cliff(helper);
+        check(dangerous(helper, 3, 7, CORRIDOR_Z_MAX + 2, 1), "setup: the open space behind the wall isn't a drop");
+        expectDistance(helper, 3, 7, 3, EdgeProbe.NONE, "three blocks in, with only drops behind the wall within 3");
+        helper.succeed();
+    }
+
     /** Barrier walls and water are not drops: one can't be walked into, the other is swum in. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
     public static void wallsAndWaterAreNotDrops(GameTestHelper helper) {
         cliff(helper);
         check(!dangerous(helper, 3, 7, CORRIDOR_Z_MIN - 1, 1), "the barrier wall beside the high ground counts as a drop");
         helper.setBlock(7, 5, Z, Blocks.WATER);
-        check(!dangerous(helper, 7, 6, 1), "from the ledge, a column with water a block down counts as a drop");
+        boolean waterIsADrop = dangerous(helper, 7, 6, 1);
+        helper.setBlock(7, 5, Z, Blocks.AIR); // before it flows: no test leaves water behind
+        check(!waterIsADrop, "from the ledge, a column with water a block down counts as a drop");
         helper.succeed();
     }
 

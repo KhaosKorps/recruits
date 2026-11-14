@@ -45,8 +45,9 @@ public final class EdgeProbe {
     /**
      * How far, in blocks, the nearest dangerous drop is from a mob standing at (x, feetY, z),
      * searching square rings out to {@code radius}; {@link #NONE} when there is none that close.
-     * {@code cache}, when given, remembers each column's answer for the rest of one search; its
-     * default return value must be -1.
+     * A drop behind a wall doesn't count: every column on the straight line to it must be open at
+     * feet height. {@code cache}, when given, remembers each column's answer for the rest of one
+     * search; its default return value must be -1.
      */
     public static int distanceToDangerousDrop(BlockGetter level, int x, int feetY, int z, int maxFall, int radius,
                                               @Nullable Long2ByteMap cache) {
@@ -54,11 +55,26 @@ public final class EdgeProbe {
             for (int dx = -ring; dx <= ring; dx++) {
                 for (int dz = -ring; dz <= ring; dz++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
-                    if (isDangerousDropCached(level, x + dx, feetY, z + dz, maxFall, cache)) return ring;
+                    if (isDangerousDropCached(level, x + dx, feetY, z + dz, maxFall, cache)
+                            && !behindAWall(level, x, feetY, z, dx, dz, ring)) {
+                        return ring;
+                    }
                 }
             }
         }
         return NONE;
+    }
+
+    /** Whether a column on the straight line from (x, z) to (x + dx, z + dz) is closed at feet height. */
+    private static boolean behindAWall(BlockGetter level, int x, int feetY, int z, int dx, int dz, int ring) {
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int step = 1; step < ring; step++) {
+            int cx = x + Math.round((float) (step * dx) / ring);
+            int cz = z + Math.round((float) (step * dz) / ring);
+            if (level instanceof LevelReader reader && !reader.hasChunkAt(cx, cz)) return true;
+            if (!isOpen(level, pos.set(cx, feetY, cz))) return true;
+        }
+        return false;
     }
 
     private static boolean isDangerousDropCached(BlockGetter level, int x, int feetY, int z, int maxFall,

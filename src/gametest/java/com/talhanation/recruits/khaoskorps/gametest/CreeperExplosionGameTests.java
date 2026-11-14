@@ -45,12 +45,12 @@ public class CreeperExplosionGameTests {
 
     @BeforeBatch(batch = NO_DAMAGE_BATCH)
     public static void preventCreeperDamage(ServerLevel level) {
-        KhaosKorpsServerConfig.PreventCreeperDamage.set(true);
+        GameTestSupport.forkSettings(() -> KhaosKorpsServerConfig.PreventCreeperDamage.set(true));
     }
 
     @AfterBatch(batch = NO_DAMAGE_BATCH)
     public static void restoreCreeperDamage(ServerLevel level) {
-        KhaosKorpsServerConfig.PreventCreeperDamage.set(false);
+        GameTestSupport.resetForkSettings();
     }
 
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 100, batch = NO_DAMAGE_BATCH)

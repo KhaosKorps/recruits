@@ -154,17 +154,16 @@ public class FollowBaselineGameTests {
     public static void fallDistanceTwo(net.minecraft.server.level.ServerLevel level) { setFallDistance(2); }
 
     @net.minecraft.gametest.framework.AfterBatch(batch = PIT_FALL_2)
-    public static void afterFallDistanceTwo(net.minecraft.server.level.ServerLevel level) { setFallDistance(1); }
+    public static void afterFallDistanceTwo(net.minecraft.server.level.ServerLevel level) { resetForkSettings(); }
 
     @net.minecraft.gametest.framework.BeforeBatch(batch = PIT_FALL_3)
     public static void fallDistanceThree(net.minecraft.server.level.ServerLevel level) { setFallDistance(3); }
 
     @net.minecraft.gametest.framework.AfterBatch(batch = PIT_FALL_3)
-    public static void afterFallDistanceThree(net.minecraft.server.level.ServerLevel level) { setFallDistance(1); }
+    public static void afterFallDistanceThree(net.minecraft.server.level.ServerLevel level) { resetForkSettings(); }
 
     private static void setFallDistance(int blocks) {
-        com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.MaxFallDistance.set(blocks);
-        com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.republish();
+        forkSettings(() -> com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.MaxFallDistance.set(blocks));
     }
 
     /** Nena's G4-3 at fall distance 2: expected to fail until the pit fix (N2), so optional. */

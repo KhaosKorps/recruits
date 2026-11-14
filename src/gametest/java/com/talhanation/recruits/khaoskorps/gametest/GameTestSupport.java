@@ -1,13 +1,17 @@
 package com.talhanation.recruits.khaoskorps.gametest;
 
 import com.mojang.authlib.GameProfile;
+import com.talhanation.recruits.Main;
 import com.talhanation.recruits.config.RecruitsServerConfig;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.init.ModEntityTypes;
+import com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig;
 import com.talhanation.recruits.pathfinding.AsyncPath;
+import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.gametest.framework.TestFunction;
 import net.minecraft.network.Connection;
 import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.protocol.PacketFlow;
@@ -19,13 +23,18 @@ import net.minecraftforge.network.NetworkDirection;
 import net.minecraftforge.network.NetworkEvent;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * KhaosKorps fork: shared setup for the Follow Me GameTests.
@@ -135,6 +144,55 @@ public final class GameTestSupport {
         recruit.setFollowState(1);
         recruit.setTarget(null);
         return recruit;
+    }
+
+    /**
+     * Puts every fork setting back to its declared default and republishes the snapshot.
+     * GameTest batch order isn't fixed, so every settings batch starts and ends with this.
+     * The settings are found by reflection, so one added later can't be left out.
+     */
+    public static void resetForkSettings() {
+        for (Field field : KhaosKorpsServerConfig.class.getFields()) {
+            if (!Modifier.isStatic(field.getModifiers())
+                    || !ForgeConfigSpec.ConfigValue.class.isAssignableFrom(field.getType())) continue;
+            try {
+                resetToDefault((ForgeConfigSpec.ConfigValue<?>) field.get(null));
+            } catch (IllegalAccessException e) {
+                throw new IllegalStateException("could not reset the fork setting " + field.getName(), e);
+            }
+        }
+        KhaosKorpsServerConfig.republish();
+    }
+
+    /** Resets every fork setting, applies a batch's own values, then republishes the snapshot. */
+    public static void forkSettings(Runnable batchValues) {
+        resetForkSettings();
+        batchValues.run();
+        KhaosKorpsServerConfig.republish();
+    }
+
+    private static <T> void resetToDefault(ForgeConfigSpec.ConfigValue<T> value) {
+        value.set(value.getDefault());
+    }
+
+    /** The batch a @GameTest joins when it names none. */
+    public static final String DEFAULT_BATCH = "defaultBatch";
+
+    /**
+     * {@code count} copies of a test in the default batch, for a result that depends on timing.
+     * Used instead of {@code @GameTest(attempts = ...)}: vanilla starts each further attempt as soon
+     * as the previous one ends, outside its batch, so it can run under another batch's settings.
+     * Seen on 2026-11-13: an edge test's later attempt ran during the follow-pace batch, at follow
+     * speed 0.1, and failed its setup.
+     */
+    public static List<TestFunction> copies(String testName, int count, int timeoutTicks, boolean required,
+                                            Consumer<GameTestHelper> test) {
+        List<TestFunction> copies = new ArrayList<>();
+        for (int i = 1; i <= count; i++) {
+            copies.add(new TestFunction(DEFAULT_BATCH, testName + "_" + i,
+                    Main.MOD_ID + ":" + HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks, 0L, required, test));
+        }
+        return copies;
     }
 
     /** Daytime, so no rest or night behaviour competes with following. */

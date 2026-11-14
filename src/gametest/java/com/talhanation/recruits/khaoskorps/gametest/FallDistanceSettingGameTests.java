@@ -32,16 +32,15 @@ public class FallDistanceSettingGameTests {
 
     @BeforeBatch(batch = BATCH)
     public static void raiseFallDistances(ServerLevel level) {
-        KhaosKorpsServerConfig.MaxFallDistance.set(3);
-        KhaosKorpsServerConfig.MountedMaxFallDistance.set(4);
-        KhaosKorpsServerConfig.republish();
+        forkSettings(() -> {
+            KhaosKorpsServerConfig.MaxFallDistance.set(3);
+            KhaosKorpsServerConfig.MountedMaxFallDistance.set(4);
+        });
     }
 
     @AfterBatch(batch = BATCH)
     public static void restoreFallDistances(ServerLevel level) {
-        KhaosKorpsServerConfig.MaxFallDistance.set(1);
-        KhaosKorpsServerConfig.MountedMaxFallDistance.set(1);
-        KhaosKorpsServerConfig.republish();
+        resetForkSettings();
     }
 
     /** G2-1: with the setting at 3, a recruit follows its owner down a two-block drop. */

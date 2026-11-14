@@ -4,10 +4,14 @@ import com.talhanation.recruits.Main;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
+import net.minecraft.gametest.framework.GameTestGenerator;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.gametest.framework.TestFunction;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
+
+import java.util.List;
 
 import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 
@@ -18,12 +22,15 @@ import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
  * like a step down and that lower step is the cliff edge, moving to fast they dont stop fast
  * enough".
  *
- * Optional until a fix lands: these document today's behaviour. They run several attempts,
- * because a slide depends on speed and timing.
+ * Optional until a fix lands: these document today's behaviour. The single-recruit tests run as
+ * several copies at once, because a slide depends on speed and timing (GameTestSupport.copies says
+ * why copies and not attempts).
  */
 @GameTestHolder(Main.MOD_ID)
 @PrefixGameTestTemplate(false)
 public class EdgeSafetyGameTests {
+
+    private static final int COPIES = 5;
 
     /**
      * High ground at stand height 7 (x = 1..5), a one-block step down onto a one-block ledge at
@@ -32,8 +39,13 @@ public class EdgeSafetyGameTests {
      * (AsyncGroundPathNavigation.createPath), which it can't reach at fall distance 1: its path
      * ends on the ledge, right after the step down.
      */
-    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 260, required = false, attempts = 5, requiredSuccesses = 5)
-    public static void aRecruitSteppingDownOntoACliffEdgeLedgeStaysOnIt(GameTestHelper helper) {
+    @GameTestGenerator
+    public static List<TestFunction> aRecruitSteppingDownOntoACliffEdgeLedgeStaysOnIt() {
+        return copies("arecruitsteppingdownontoacliffedgeledgestaysonit", COPIES, 260, false,
+                EdgeSafetyGameTests::steppingDownOntoTheLedge);
+    }
+
+    private static void steppingDownOntoTheLedge(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, 5, 7);
         ground(helper, 6, 6, 6);
@@ -68,8 +80,13 @@ public class EdgeSafetyGameTests {
      * z over the drop, and in and out over the ledge, so the recruit's path keeps changing while
      * it is near the edge. With a single recruit nothing can push it, so a fall here is its own.
      */
-    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 420, required = false, attempts = 5, requiredSuccesses = 5)
-    public static void aLoneRecruitFollowingAMovingOwnerNeverGoesOverTheEdge(GameTestHelper helper) {
+    @GameTestGenerator
+    public static List<TestFunction> aLoneRecruitFollowingAMovingOwnerNeverGoesOverTheEdge() {
+        return copies("alonerecruitfollowingamovingownernevergoesovertheedge", COPIES, 420, false,
+                EdgeSafetyGameTests::loneRecruitUnderAMovingOwner);
+    }
+
+    private static void loneRecruitUnderAMovingOwner(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, 5, 7);
         ground(helper, 6, 6, 6);

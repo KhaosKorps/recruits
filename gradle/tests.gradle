@@ -62,9 +62,12 @@ def gameTestWorld = [
         'spawn-monsters'      : 'false',
 ]
 tasks.matching { it.name == 'runGameTestServer' }.configureEach {
+    finalizedBy 'buildVisualizer'
     doFirst {
         project.delete(project.fileTree('build/gametest-run/world') { exclude 'serverconfig/**' })
         project.delete('build/gametest-run/world/serverconfig/recruits-khaoskorps-server.toml')
+        // The visualiser shows one run: recordings from an earlier run, or from a test since removed, go.
+        project.delete('build/gametest-run/runs', 'build/gametest-run/pathtrace')
 
         def properties = project.file('build/gametest-run/server.properties')
         def lines = properties.exists() ? properties.readLines() : []
@@ -99,6 +102,31 @@ minecraft {
                     source sourceSets.gametest
                 }
             }
+        }
+    }
+}
+
+// The pathfinding visualiser (tools/visualizer/README.md): built from the last GameTest run's
+// recordings and the source after every run, pass or fail, into build/visualizer. Needs Python 3 on
+// the PATH. If it can't be built, the task says why and the test run's own result stands.
+tasks.register('buildVisualizer', Exec) {
+    group = 'verification'
+    description = 'Builds the pathfinding visualiser page from the last GameTest run.'
+    workingDir = project.projectDir
+    commandLine 'python', '-I', 'tools/visualizer/build_visualizer.py',
+            '--clone', project.projectDir.path,
+            '--trace', 'build/gametest-run/pathtrace/ravine-seed1.json',
+            '--viz', 'tools/visualizer/viz.js',
+            '--out', 'build/visualizer/index.html',
+            '--runs', 'build/gametest-run/runs',
+            '--log', 'build/gametest-run/logs/latest.log'
+    ignoreExitValue = true
+    doLast {
+        int exit = executionResult.get().exitValue
+        if (exit != 0) {
+            logger.warn("The pathfinding visualiser was not built: build_visualizer.py exited ${exit}; its message is above.")
+        } else {
+            logger.lifecycle("Pathfinding visualiser: ${project.file('build/visualizer/index.html')} (tools/visualizer/README.md says how to open it)")
         }
     }
 }

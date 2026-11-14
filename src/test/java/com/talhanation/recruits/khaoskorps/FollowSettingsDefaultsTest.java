@@ -82,6 +82,11 @@ class FollowSettingsDefaultsTest {
     }
 
     @Test
+    void followersCrossRiskyNarrowSpotsOneAtATimeByDefault() {
+        assertTrue(d.crossOneAtATime(), "the user's choice for one-block bridges, design A");
+    }
+
+    @Test
     void pathLoggingIsOffByDefault() {
         assertFalse(d.pathLog());
     }

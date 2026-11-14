@@ -12,8 +12,10 @@ package com.talhanation.recruits.khaoskorps;
  *                        beside a dangerous drop; 1.0 is no slowdown
  * @param depthWeight     for a path that can't reach the owner, how many blocks of distance each block
  *                        below the mob's start counts as, in choosing where the path ends; 0 is off
+ * @param crossOneAtATime whether the group crosses risky narrow spots one at a time (CrossingLocks)
  */
-public record EdgeCare(int keepBackBlocks, boolean trimUnreachable, int nearOwnerBlocks, double carefulSpeed, double depthWeight) {
+public record EdgeCare(int keepBackBlocks, boolean trimUnreachable, int nearOwnerBlocks, double carefulSpeed, double depthWeight,
+                       boolean crossOneAtATime) {
 
     /**
      * The care a following recruit's path gets under {@code settings}. Keeping back near the owner
@@ -27,6 +29,7 @@ public record EdgeCare(int keepBackBlocks, boolean trimUnreachable, int nearOwne
                 : 0;
         return new EdgeCare(keepBack, settings.waitWhenOwnerUnreachable(), nearOwner,
                 settings.edgeMargin() ? settings.edgeCarefulSpeed() : 1.0,
-                settings.waitWhenOwnerUnreachable() ? settings.unreachableDepthWeight() : 0.0);
+                settings.waitWhenOwnerUnreachable() ? settings.unreachableDepthWeight() : 0.0,
+                settings.edgeMargin() && settings.crossOneAtATime());
     }
 }

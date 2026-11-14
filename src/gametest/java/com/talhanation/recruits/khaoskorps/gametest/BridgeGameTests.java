@@ -43,6 +43,36 @@ public class BridgeGameTests {
         daytime(helper);
     }
 
+    /**
+     * CrossOneAtATime: three followers start side by side before the bridge, with the owner straight
+     * across. Never are two of them on the bridge at once, nobody falls, and all three reach the owner.
+     */
+    @GameTest(template = DetourGameTests.ARENA, timeoutTicks = 1400)
+    public static void threeFollowersCrossABridgeOneAtATime(GameTestHelper helper) {
+        bridgeArena(helper);
+        net.minecraft.server.level.ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
+        pin(helper, owner, 24.5, 5, 33.5);
+        java.util.List<com.talhanation.recruits.entities.AbstractRecruitEntity> group = new java.util.ArrayList<>();
+        for (int x = 23; x <= 25; x++) group.add(followingRecruit(helper, owner, x, 5, 16));
+        helper.onEachTick(() -> {
+            int onBridge = 0;
+            for (com.talhanation.recruits.entities.AbstractRecruitEntity recruit : group) {
+                net.minecraft.world.phys.Vec3 at = relative(helper, recruit);
+                if (at.y < 4.0) throw new GameTestAssertException("a recruit fell into the ravine: at " + describe(helper, recruit));
+                if (at.x >= 23.7 && at.x <= 25.3 && at.z >= 19.7 && at.z <= 25.3 && at.y >= 4.5) onBridge++;
+            }
+            if (onBridge > 1) throw new GameTestAssertException(onBridge + " recruits on the bridge at once at tick " + helper.getTick());
+        });
+        helper.succeedWhen(() -> {
+            for (com.talhanation.recruits.entities.AbstractRecruitEntity recruit : group) {
+                if (recruit.distanceToSqr(owner) > 4.5 * 4.5) {
+                    throw new GameTestAssertException("a recruit hasn't reached the owner: at " + describe(helper, recruit));
+                }
+            }
+            removeOwner(helper, owner);
+        });
+    }
+
     /** With the owner straight across, a following recruit crosses the bridge without falling. */
     @GameTest(template = DetourGameTests.ARENA, timeoutTicks = 900)
     public static void aRecruitCrossesABridgeToAnOwnerInLineWithIt(GameTestHelper helper) {

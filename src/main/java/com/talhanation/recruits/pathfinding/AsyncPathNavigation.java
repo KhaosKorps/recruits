@@ -254,6 +254,11 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             keep = PathEdgeTrim.pointsToKeepNearTarget(this.level, this.path, maxFall,
                     this.edgeCare.keepBackBlocks(), this.edgeCare.nearOwnerBlocks());
         }
+        if (this.edgeCare.crossOneAtATime() && this.mob instanceof com.talhanation.recruits.entities.AbstractRecruitEntity recruit
+                && recruit.getOwnerUUID() != null && this.level instanceof net.minecraft.server.level.ServerLevel server) {
+            keep = Math.min(keep, com.talhanation.recruits.khaoskorps.CrossingLocks.pointsToKeep(server, this.mob, recruit.getOwnerUUID(),
+                    this.path, maxFall, this.edgeCare.keepBackBlocks())); // KhaosKorps fork: CrossOneAtATime
+        }
         if (keep < this.path.getNodeCount()) this.path.truncateNodes(keep);
     }
 

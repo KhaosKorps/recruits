@@ -44,6 +44,7 @@ public final class KhaosKorpsServerConfig {
     public static final ForgeConfigSpec.IntValue DeadEndSearchNodes;
     public static final ForgeConfigSpec.DoubleValue DropCostPerBlock;
     public static final ForgeConfigSpec.DoubleValue UnreachableDepthWeight;
+    public static final ForgeConfigSpec.BooleanValue CrossOneAtATime;
     public static final ForgeConfigSpec.BooleanValue WaitWhenOwnerUnreachable;
     public static final ForgeConfigSpec.BooleanValue DetourSearch;
     public static final ForgeConfigSpec.DoubleValue MovementSpeedMultiplier;
@@ -153,6 +154,11 @@ public final class KhaosKorpsServerConfig {
                         "blocks of extra distance, so it waits up on the rim instead of going down into a ravine just because",
                         "the bottom is nearer its owner in a straight line. 0 is off.")
                 .defineInRange("UnreachableDepthWeight", d.unreachableDepthWeight(), 0.0, 16.0);
+        CrossOneAtATime = builder
+                .comment("With EdgeMargin on: a following group crosses a risky narrow spot (a one-block bridge, a one-wide",
+                        "ridge, with a deadly drop on both sides) one recruit at a time. The rest wait back on safe ground,",
+                        "in the order they came; a recruit stalled on the spot for 10 seconds lets the next go.")
+                .define("CrossOneAtATime", d.crossOneAtATime());
         DetourSearch = builder
                 .comment("When following recruits have been stuck about 3 seconds with no path to their owner, and the owner",
                         "is on the ground, plan a way round in steps of up to 16 blocks, at most 4 times the straight-line",
@@ -233,7 +239,7 @@ public final class KhaosKorpsServerConfig {
                 DirtPathPreference.get(),
                 KeepWalkingWhileRepathing.get(), StaggerFollowRepaths.get(),
                 EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(), DeadEndSearchNodes.get(), DropCostPerBlock.get(),
-                WaitWhenOwnerUnreachable.get(), UnreachableDepthWeight.get(), DetourSearch.get(),
+                WaitWhenOwnerUnreachable.get(), UnreachableDepthWeight.get(), CrossOneAtATime.get(), DetourSearch.get(),
                 MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(),
                 CreepersTargetRecruits.get(),
                 FireCheckTicks.get(), TntCheckTicks.get(), VillageDefenceCheckTicks.get(),

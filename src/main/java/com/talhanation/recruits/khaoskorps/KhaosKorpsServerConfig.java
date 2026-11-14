@@ -95,7 +95,8 @@ public final class KhaosKorpsServerConfig {
                         "0 = each recruit's own follow range, as in 1.15.2 (32, or 64 for ranged and mounted units).")
                 .defineInRange("FollowMaxPathLength", d.followMaxPathLength(), 0, 256);
         SearchNodesPerBlock = builder
-                .comment("Search budget: path points examined per block of follow range. 16 in 1.15.2.")
+                .comment("Search budget: path points a search may examine per block of its range (the follow range,",
+                        "or FollowMaxPathLength while following). 16 in 1.15.2.")
                 .defineInRange("SearchNodesPerBlock", d.searchNodesPerBlock(), 1, 256);
         DirtPathPreference = builder
                 .comment("How strongly paths prefer dirt paths.",

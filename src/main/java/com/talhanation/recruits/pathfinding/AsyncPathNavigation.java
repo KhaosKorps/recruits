@@ -2,6 +2,7 @@ package com.talhanation.recruits.pathfinding;
 
 import com.google.common.collect.ImmutableSet;
 import com.talhanation.recruits.config.RecruitsServerConfig;
+import com.talhanation.recruits.khaoskorps.FollowSettings;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.protocol.game.DebugPackets;
@@ -31,10 +32,15 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     private int reachRange;
     private final PathFinder pathFinder;
     private boolean isStuck;
+    // KhaosKorps fork: the budget the path finder was built with, so each search can scale it (SearchNodesPerBlock).
+    private final int baseSearchBudget;
+    // KhaosKorps fork: the search range for the moveTo call in progress, set only by moveTo(Entity, double, float); 0 = the follow range.
+    private float searchRange;
 
     public AsyncPathNavigation(PathfinderMob p_26515_, Level p_26516_) {
         super(p_26515_, p_26516_);
         int i = Mth.floor(p_26515_.getAttributeValue(Attributes.FOLLOW_RANGE) * 16.0D);
+        this.baseSearchBudget = i;
         this.pathFinder = this.createPathFinder(i);
     }
 
@@ -82,7 +88,8 @@ public abstract class AsyncPathNavigation extends PathNavigation {
 
     @Nullable
     protected Path createPath(Set<BlockPos> p_26552_, int p_26553_, boolean p_26554_, int p_26555_) {
-        return this.createPath(p_26552_, p_26553_, p_26554_, p_26555_, (float) this.mob.getAttributeValue(Attributes.FOLLOW_RANGE));
+        float range = this.searchRange > 0 ? this.searchRange : (float) this.mob.getAttributeValue(Attributes.FOLLOW_RANGE); // KhaosKorps fork: was always the follow range
+        return this.createPath(p_26552_, p_26553_, p_26554_, p_26555_, range);
     }
 
 
@@ -103,7 +110,8 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             BlockPos blockpos = p_148225_ ? this.mob.blockPosition().above() : this.mob.blockPosition();
             int i = (int)(p_148227_ + (float)p_148224_);
             PathNavigationRegion pathnavigationregion = new PathNavigationRegion(this.level, blockpos.offset(-i, -i, -i), blockpos.offset(i, i, i));
-            float maxVisitedNodesMultiplier = 1.0F;
+            float maxVisitedNodesMultiplier = FollowSettings.searchBudgetMultiplier( // KhaosKorps fork: was 1.0F
+                    FollowSettings.current().searchNodesPerBlock(), p_148227_, this.baseSearchBudget);
             Path path = this.pathFinder.findPath(pathnavigationregion, this.mob, p_148223_, p_148227_, p_148226_, maxVisitedNodesMultiplier);
 
             if (!p_148223_.isEmpty())
@@ -131,6 +139,20 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     public boolean moveTo(double p_26520_, double p_26521_, double p_26522_, double p_26523_) {
         Path path = this.createPath(new BlockPos((int) p_26520_, (int) p_26521_, (int) p_26522_), 1);
         return this.moveTo(path, p_26523_);
+    }
+
+    /**
+     * KhaosKorps fork: {@link #moveTo(Entity, double)} with its own search range in blocks, which caps
+     * how far the search reaches and how long the path may be. 0 uses the mob's follow range, as
+     * 1.15.2 always did. The follow goal passes FollowMaxPathLength here. Server thread only, as moveTo is.
+     */
+    public boolean moveTo(@NotNull Entity target, double speed, float range) {
+        this.searchRange = range;
+        try {
+            return this.moveTo(target, speed);
+        } finally {
+            this.searchRange = 0;
+        }
     }
 
     // Paper start - optimise pathfinding

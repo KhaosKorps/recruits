@@ -73,6 +73,17 @@ public record FollowSettings(
         return Math.min(stopDistanceSqr, startDistanceSqr);
     }
 
+    /**
+     * The multiplier a navigation passes to its path finder for one search, so that search may
+     * examine {@code nodesPerBlock} path points per block of {@code range}. {@code baseBudget} is
+     * the budget the path finder was built with, 16 per block of the follow range, so at the
+     * defaults, where the range is the follow range, this is exactly 1.
+     */
+    public static float searchBudgetMultiplier(int nodesPerBlock, float range, int baseBudget) {
+        if (baseBudget <= 0) return 1.0F;
+        return nodesPerBlock * range / baseBudget;
+    }
+
     /** Publishes a new snapshot. Called on config load and save. */
     static void publish(FollowSettings settings) {
         current = settings;

@@ -4,14 +4,16 @@ import com.talhanation.recruits.entities.AbstractRecruitEntity;
 
 import com.talhanation.recruits.entities.CaptainEntity;
 import com.talhanation.recruits.khaoskorps.FollowSettings;
+import com.talhanation.recruits.pathfinding.AsyncPathNavigation;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.vehicle.Boat;
 
 
 /**
- * KhaosKorps fork: the start and stop distances, the start-check and repath intervals and the speed
- * come from {@link FollowSettings} each time they are used, so a saved change reaches recruits already
+ * KhaosKorps fork: the start and stop distances, the start-check and repath intervals, the speed and
+ * the follow path length come from {@link FollowSettings} each time they are used, so a saved change reaches recruits already
  * in the world. The constructor's values are no longer read; the settings' defaults are the values
  * 1.15.2 used.
  */
@@ -80,7 +82,12 @@ public class RecruitFollowOwnerGoal extends Goal {
                     : this.adjustedTickDelay(settings.followRepathTicks());
 
             this.recruit.getLookControl().setLookAt(this.owner, 10.0F, (float)this.recruit.getMaxHeadXRot());
-            this.recruit.getNavigation().moveTo(this.owner, settings.followSpeed());
+            PathNavigation navigation = this.recruit.getNavigation();
+            if (navigation instanceof AsyncPathNavigation asyncNavigation) {
+                asyncNavigation.moveTo(this.owner, settings.followSpeed(), settings.followMaxPathLength());
+            } else {
+                navigation.moveTo(this.owner, settings.followSpeed());
+            }
 
             if(this.recruit instanceof CaptainEntity captain && captain.getVehicle() instanceof Boat){
                 captain.setSailPos(this.owner.getOnPos());

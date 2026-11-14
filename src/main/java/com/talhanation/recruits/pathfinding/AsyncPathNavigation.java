@@ -155,9 +155,10 @@ public abstract class AsyncPathNavigation extends PathNavigation {
                     }
                 });
             } else if (logged != null && path instanceof AsyncPath) { // KhaosKorps fork: PathLog, a navigation built for async searches after the setting was turned off
-                AsyncPathProcessor.awaitProcessing(path, this.level.getServer(), processedPath -> PathLog.arrived(logged, processedPath, false, this.level.getGameTime()));
+                AsyncPathProcessor.awaitProcessing(path, this.level.getServer(), processedPath -> PathLog.arrived(logged, processedPath,
+                        processedPath != this.path && processedPath != this.pendingPath, this.level.getGameTime()));
             }
-            PathLog.handedBack(logged); // KhaosKorps fork
+            PathLog.handedBack(logged, path); // KhaosKorps fork
             return path;
         }
     }
@@ -191,7 +192,9 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     private boolean takePendingIfFinished() {
         if (this.pendingPath == null) return false;
         boolean finished = this.pendingPath instanceof AsyncPath pending && pending.isProcessed();
-        if (!finished && this.path != null && !this.path.isDone()) return false;
+        // Unfinished, it takes over only from a walked path that has run out; with no path at all (a recompute in
+        // progress, which may yet fail mid-jump) it keeps waiting.
+        if (!finished && (this.path == null || !this.path.isDone())) return false;
         this.path = this.pendingPath;
         this.pendingPath = null;
         if (finished) this.trimPath();
@@ -299,6 +302,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             this.pendingPath = null; // KhaosKorps fork
             return false;
         }
+        PathLog.taken(p_26537_); // KhaosKorps fork: PathLog, a path handed to moveTo is walked (or waits to be)
         Path walkedBefore = this.path; // KhaosKorps fork: the walked path handed back doesn't undo a search that has just finished
         if (this.takePendingIfFinished() && p_26537_ == walkedBefore) p_26537_ = this.path; // KhaosKorps fork
         // KhaosKorps fork: KeepWalkingWhileRepathing: while the new path is still searched, keep walking the old one.

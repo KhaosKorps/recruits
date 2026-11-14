@@ -250,6 +250,89 @@ public class KeepWalkingGameTests {
         helper.succeed();
     }
 
+    /**
+     * A block change near the path makes the navigation recompute it; if that happens mid-jump (no new
+     * search can start off the ground), the waiting search must survive, not be dropped with the old path.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 40, batch = GOAL_ALONE)
+    public static void withKeepWalkingARecomputeMidJumpKeepsTheWaitingSearch(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        AbstractRecruitEntity recruit = helper.spawn(ModEntityTypes.RECRUIT.get(), 2, 3, 2);
+        recruit.setNoAi(true);
+        AsyncPathNavigation navigation = (AsyncPathNavigation) recruit.getNavigation();
+        CountDownLatch release = new CountDownLatch(1);
+        boolean kept;
+        try {
+            Path walked = corridorPath(helper, 2, 9);
+            navigation.moveTo(walked, 1.0D);
+            AsyncPath held = new AsyncPath(new ArrayList<>(), Set.of(helper.absolutePos(new BlockPos(13, 3, 2))), helper.getLevel(), () -> {
+                try {
+                    release.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return corridorPath(helper, 2, 13);
+            });
+            navigation.moveTo(held, 1.0D);
+            // A recompute only happens toward the navigation's own target, which moveTo(Path) doesn't set.
+            try {
+                java.lang.reflect.Field target = AsyncPathNavigation.class.getDeclaredField("targetPos");
+                target.setAccessible(true);
+                target.set(navigation, helper.absolutePos(new BlockPos(13, 3, 2)));
+            } catch (ReflectiveOperationException e) {
+                throw new GameTestAssertException("setup: can't set the navigation's target: " + e);
+            }
+            recruit.setOnGround(false);
+            navigation.recomputePath();
+            kept = navigation.hasPendingPath() || navigation.getPath() == held;
+        } finally {
+            release.countDown();
+        }
+        recruit.discard();
+        if (!kept) throw new GameTestAssertException("a recompute mid-jump dropped the waiting search");
+        helper.succeed();
+    }
+
+    /**
+     * When the walked path runs out during the navigation's own tick, the waiting search takes its
+     * place by the end of that tick, so a goal checking isDone before the next tick sees it.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 40, batch = GOAL_ALONE)
+    public static void withKeepWalkingTheWaitingSearchTakesOverInTheTickTheWalkedPathRunsOut(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        AbstractRecruitEntity recruit = helper.spawn(ModEntityTypes.RECRUIT.get(), 9, 3, 2);
+        recruit.setNoAi(true);
+        recruit.setOnGround(true);
+        AsyncPathNavigation navigation = (AsyncPathNavigation) recruit.getNavigation();
+        CountDownLatch release = new CountDownLatch(1);
+        boolean done;
+        try {
+            Path walked = corridorPath(helper, 8, 9);
+            navigation.moveTo(walked, 1.0D);
+            walked.setNextNodeIndex(walked.getNodeCount() - 1);
+            AsyncPath held = new AsyncPath(new ArrayList<>(), Set.of(helper.absolutePos(new BlockPos(13, 3, 2))), helper.getLevel(), () -> {
+                try {
+                    release.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return corridorPath(helper, 9, 13);
+            });
+            navigation.moveTo(held, 1.0D);
+            if (!navigation.hasPendingPath()) throw new GameTestAssertException("setup: the search isn't waiting beside the walked path");
+            navigation.tick();
+            if (!walked.isDone()) throw new GameTestAssertException("setup: the walked path didn't run out in that tick");
+            done = navigation.isDone();
+        } finally {
+            release.countDown();
+        }
+        recruit.discard();
+        if (done) throw new GameTestAssertException("after the tick the walked path ran out in, the navigation reported done");
+        helper.succeed();
+    }
+
     /** Queues one latched job per path worker, so a search queued after them waits until the latch opens. */
     private static CountDownLatch holdTheWorkers(GameTestHelper helper) {
         CountDownLatch release = new CountDownLatch(1);

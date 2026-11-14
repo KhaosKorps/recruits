@@ -49,6 +49,9 @@ public final class PathLogRecord {
     private long cpuMicros = -1;
     private boolean failed;
     private boolean handedBack;
+    private boolean taken;
+    private long heldTick = -1;
+    private boolean heldEmpty;
     private final AtomicBoolean written = new AtomicBoolean();
 
     public PathLogRecord(long seq, int settingsVersion, long requestTick, String recruit, char nav, char purpose,
@@ -97,6 +100,27 @@ public final class PathLogRecord {
 
     public boolean wasHandedBack() {
         return this.handedBack;
+    }
+
+    /** The search's path was handed to moveTo (server thread). */
+    public void taken() {
+        this.taken = true;
+    }
+
+    public boolean wasTaken() {
+        return this.taken;
+    }
+
+    /** The result arrived at {@code tick} before its path was handed back; whether it is walked is known later. */
+    public void hold(long tick, boolean empty) {
+        this.heldTick = tick;
+        this.heldEmpty = empty;
+    }
+
+    /** The row for a held result: walked if its path was taken, else discarded; waiting time to its arrival. */
+    public String finishHeld() {
+        return this.finish(this.heldTick - this.requestTick,
+                !this.taken ? DISCARDED : this.heldEmpty ? NO_PATH : APPLIED);
     }
 
     /** Whether the search has run, found or failed. */

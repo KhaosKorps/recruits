@@ -278,6 +278,48 @@ public class DetourGameTests {
         });
     }
 
+    /**
+     * A recruit paused partway along a route and then brought to its owner's side checks for its owner
+     * first when it follows again, instead of walking back to the route's next waypoint.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 1400)
+    public static void aRecruitResumingNearItsOwnerChecksForItBeforeTheRoute(GameTestHelper helper) {
+        ravineArena(helper);
+        ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
+        pin(helper, owner, 24.5, 5, 33.5);
+        standing(helper, owner);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 24, 5, 12);
+        DetourFollow detour = detourOf(recruit);
+        long[] resumeAt = {-1};
+        helper.onEachTick(() -> {
+            long tick = helper.getTick();
+            if (resumeAt[0] < 0) {
+                if (getField(detour, "walking") != null && (Integer) getField(detour, "next") >= 2) {
+                    recruit.setFollowState(2);
+                    resumeAt[0] = tick + 80;
+                }
+                return;
+            }
+            if (tick == resumeAt[0] - 1) {
+                net.minecraft.world.phys.Vec3 at = helper.absoluteVec(new net.minecraft.world.phys.Vec3(24.5, 5, 29.5));
+                recruit.teleportTo(at.x, at.y, at.z);
+            }
+            if (tick == resumeAt[0]) recruit.setFollowState(1);
+            if (tick > resumeAt[0] && recruit.distanceToSqr(owner) > 8.0 * 8.0) {
+                throw new GameTestAssertException("brought to its owner's side, the recruit headed back to its route: at " + describe(helper, recruit)
+                        + "; detour next " + getField(detour, "next") + ", checking " + getField(detour, "checkingDirect")
+                        + ", reached " + getField(detour, "lastPathReached") + ", walking " + (getField(detour, "walking") != null)
+                        + ", following " + recruit.isFollowing() + ", resumed " + resumeAt[0] + ", tick " + tick + "; " + navigationState(helper, recruit));
+            }
+        });
+        helper.succeedWhen(() -> {
+            if (resumeAt[0] < 0 || helper.getTick() <= resumeAt[0] + 20 || recruit.distanceToSqr(owner) > 3.5 * 3.5) {
+                throw new GameTestAssertException("at tick " + helper.getTick() + " the recruit is at " + describe(helper, recruit));
+            }
+            removeOwner(helper, owner);
+        });
+    }
+
     private static Object getField(Object target, String name) {
         try {
             java.lang.reflect.Field field = target.getClass().getDeclaredField(name);

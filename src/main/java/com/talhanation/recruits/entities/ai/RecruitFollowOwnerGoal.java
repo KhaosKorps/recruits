@@ -129,6 +129,7 @@ public class RecruitFollowOwnerGoal extends Goal {
                     PathLog.purpose(this.recruit, PathLogRecord.FOLLOW); // KhaosKorps fork: PathLog
                     asyncNavigation.moveTo(this.owner, settings.followSpeed(), settings.followMaxPathLength());
                 }
+                this.detour.asked(asyncNavigation.latestPath()); // KhaosKorps fork: only the follow goal's own paths count
             } else {
                 PathLog.VanillaMove logged = PathLog.vanillaMove(navigation); // KhaosKorps fork: PathLog, a mounted follower on its horse's navigation
                 navigation.moveTo(this.owner, settings.followSpeed()); // KhaosKorps fork: speed from the settings

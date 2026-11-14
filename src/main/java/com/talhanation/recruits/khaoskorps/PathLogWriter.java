@@ -134,12 +134,22 @@ public final class PathLogWriter {
             } catch (RuntimeException e) {
                 this.fail(new IOException("the path log's sink failed to close", e));
             }
+            // A row offered just as closing began can land after the drain; it is counted, not lost silently.
+            Object left;
+            while ((left = this.queue.poll()) != null) {
+                if (left instanceof Row) this.dropped.incrementAndGet();
+            }
             this.onClosed.run();
         }
     }
 
     private void write(Row row) throws IOException {
-        this.sink.write(row.file(), row.text());
+        try {
+            this.sink.write(row.file(), row.text());
+        } catch (IOException | RuntimeException e) {
+            this.dropped.incrementAndGet();
+            throw e;
+        }
         this.written++;
     }
 

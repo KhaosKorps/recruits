@@ -45,6 +45,8 @@ public final class DetourPlan {
     private final List<int[]> visited = new ArrayList<>();
     private final Side[] sides;
     private Status status = Status.PLANNING;
+    /** The found plan this one replaces, whose walkers keep to it while this one plans; null for a first plan. */
+    @Nullable private DetourPlan replaces;
     private List<BlockPos> route = List.of();
     private int searches;
     private final long startedTick;
@@ -109,6 +111,15 @@ public final class DetourPlan {
     /** The game tick the plan was found or failed on; -1 while planning. */
     long endedTick() {
         return this.finishedTick;
+    }
+
+    @Nullable
+    public DetourPlan replaces() {
+        return this.replaces;
+    }
+
+    void replacing(DetourPlan old) {
+        this.replaces = old;
     }
 
     /** Moves the goal, for an owner who has moved since the plan began. */

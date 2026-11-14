@@ -187,7 +187,7 @@ class PathLogTest {
         assertTrue(reported.await(5, TimeUnit.SECONDS));
         writer.close(2000);
         assertEquals(2, sink.rows.size(), "rows written before the failure");
-        assertEquals(3, writer.dropped(), "the failing row is lost; the 3 still queued are thrown away and counted");
+        assertEquals(4, writer.dropped(), "the failing row and the 3 still queued are thrown away and counted");
     }
 
     /** Closing without waiting returns at once, even with the writer busy, and every queued row is still written. */

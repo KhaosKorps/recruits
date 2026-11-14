@@ -43,14 +43,24 @@ public final class DetourFollow {
     private int next;
     private boolean checkingDirect;
     private long stoppedAt = -1;
+    /** The last path the follow goal asked for; only it counts as a follow path when noted. */
+    @Nullable private Path asked;
 
     /**
      * Records whether a follow path reached its owner, once its search has finished. The follow goal
      * calls this with the newest path before it replaces or clears it.
      */
     public void notePath(@Nullable Path path) {
-        if (path == null || (path instanceof AsyncPath async && !async.isProcessed())) return;
+        if (path == null || path != this.asked || (path instanceof AsyncPath async && !async.isProcessed())) return;
         this.lastPathReached = path.canReach();
+    }
+
+    /**
+     * The path the follow goal just asked for. Only that path is noted: another goal's path left on the
+     * navigation (a hold order's, a fight's) says nothing about whether the owner can be reached.
+     */
+    public void asked(@Nullable Path path) {
+        this.asked = path;
     }
 
     /** The follow goal stopped at {@code tick}. */
@@ -58,12 +68,16 @@ public final class DetourFollow {
         this.stoppedAt = tick;
     }
 
-    /** The follow goal started at {@code tick}: after a long pause, or the first time, what was noted about getting stuck no longer counts. */
+    /**
+     * The follow goal started at {@code tick}: after a long pause, or the first time, what was noted
+     * about getting stuck no longer counts, and a recruit partway along a route first checks for a
+     * direct path to its owner (it may have been moved meanwhile) before taking the route up again.
+     */
     public void started(long tick, FollowSettings settings) {
         if (this.stoppedAt >= 0 && tick - this.stoppedAt <= forgetAfterTicks(settings)) return;
         this.stillAt = null;
         this.lastPathReached = null;
-        this.checkingDirect = false;
+        this.checkingDirect = this.walking != null;
     }
 
     /**
@@ -75,8 +89,8 @@ public final class DetourFollow {
      * follows as usual. A recruit stuck for {@link #STUCK_TICKS} asks for a plan, and replaces a
      * found one that is no use to it: one with no waypoints (its planner found the owner in reach),
      * or one it has walked to the end; it must have been stuck that long since that plan ended, so a
-     * planner that keeps disagreeing with it replans at most once per stuck spell. While another
-     * recruit's replacement is being planned, a recruit partway along the old route keeps to it.
+     * planner that keeps disagreeing with it replans at most every planning time plus 3 seconds. While
+     * a replacement for the route a recruit is partway along is being planned, it keeps to that route.
      */
     @Nullable
     public BlockPos waypoint(Mob recruit, LivingEntity owner, FollowSettings settings) {
@@ -86,8 +100,8 @@ public final class DetourFollow {
         }
         this.noteProgress(recruit);
         DetourPlan plan = DetourRoutes.plan(owner.getUUID());
-        if (plan != null && plan.status() == DetourPlan.Status.PLANNING && this.walking != null && this.walking != plan
-                && this.walking.status() == DetourPlan.Status.FOUND && this.next < this.walking.route().size()) {
+        if (plan != null && plan.status() == DetourPlan.Status.PLANNING && this.walking != null && plan.replaces() == this.walking
+                && this.next < this.walking.route().size()) {
             return this.alongRoute(recruit, this.walking);
         }
         boolean found = plan != null && plan.status() == DetourPlan.Status.FOUND;

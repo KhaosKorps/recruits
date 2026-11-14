@@ -45,6 +45,11 @@ import java.util.function.BiConsumer;
  *
  * With UseAsyncPathfinding off, searches run in vanilla's PathFinder, which doesn't report how many
  * nodes it took, so those rows have nodes -1.
+ *
+ * Outcome D means the path was not walked: replaced by a newer one before its result arrived, or
+ * never handed to moveTo at all (such as the melee goal's check that a target is reachable). A
+ * result that arrives before its path is handed back (a search on the server thread) is held until
+ * the end of the tick, when it is known whether the path was taken.
  */
 public final class PathLog {
 
@@ -70,6 +75,10 @@ public final class PathLog {
     @Nullable private static PathNavigation taggedNavigation;
     private static char taggedPurpose;
     private static final Map<AbstractRecruitEntity, PathLogSummary> FOLLOWERS = new IdentityHashMap<>();
+    /** Paths handed back to their callers, to their records, so moveTo can mark them taken. */
+    private static final Map<Path, PathLogRecord> HANDED = new java.util.WeakHashMap<>();
+    /** Results that arrived before their path was handed back, written at the end of the tick. */
+    private static final java.util.List<PathLogRecord> HELD = new java.util.ArrayList<>();
 
     /** The request handed from the navigation to the search it is about to set up, on the server thread. */
     private static final ThreadLocal<PathLogRecord> REQUEST = new ThreadLocal<>();
@@ -126,7 +135,13 @@ public final class PathLog {
             return;
         }
         logSettingsIfChanged(settings, tick);
+        writeHeld();
         summarize(tick, settings, false);
+    }
+
+    private static void writeHeld() {
+        for (PathLogRecord record : HELD) emit(PATHS, record.finishHeld());
+        HELD.clear();
     }
 
     @SubscribeEvent
@@ -176,6 +191,7 @@ public final class PathLog {
 
     /** Writes the windows as they stand and closes; {@code waitMillis} 0 doesn't wait for the files. */
     private static void close(long tick, FollowSettings settings, long waitMillis) {
+        writeHeld();
         summarize(tick, settings, true);
         shutDown(waitMillis);
     }
@@ -188,6 +204,8 @@ public final class PathLog {
     private static void shutDown(long waitMillis) {
         on = false;
         FOLLOWERS.clear();
+        HANDED.clear();
+        HELD.clear();
         taggedNavigation = null;
         PathLogWriter closing = writer;
         writer = null;
@@ -367,13 +385,25 @@ public final class PathLog {
         if (path != null) {
             record.searched(PathLogRecord.INLINE, -1, micros(record.requestNanos()));
             result(record, path);
+            record.hold(record.requestTick(), path.getNodeCount() == 0);
+            HELD.add(record);
+            return;
         }
-        emit(PATHS, record.finish(0, path == null ? PathLogRecord.NO_PATH : PathLogRecord.APPLIED));
+        emit(PATHS, record.finish(0, PathLogRecord.NO_PATH));
     }
 
-    /** The search's path has been handed back to its caller; a result arriving before this is the caller's to walk. */
-    public static void handedBack(PathLogRecord record) {
-        if (record != null) record.handedBack();
+    /** The search's path has been handed back to its caller, who may now take it. */
+    public static void handedBack(PathLogRecord record, @Nullable Path path) {
+        if (record == null) return;
+        record.handedBack();
+        if (path != null) HANDED.put(path, record);
+    }
+
+    /** A path was handed to moveTo: walked, or waiting to be. */
+    public static void taken(@Nullable Path path) {
+        if (!on || path == null) return;
+        PathLogRecord record = HANDED.get(path);
+        if (record != null) record.taken();
     }
 
     /**
@@ -384,6 +414,11 @@ public final class PathLog {
      */
     public static void arrived(PathLogRecord record, Path path, boolean replaced, long tick) {
         if (record == null) return;
+        if (!record.wasHandedBack()) {
+            record.hold(tick, path == null || path.getNodeCount() == 0);
+            HELD.add(record);
+            return;
+        }
         char outcome = replaced && record.wasHandedBack() ? PathLogRecord.DISCARDED
                 : path == null || path.getNodeCount() == 0 ? PathLogRecord.NO_PATH : PathLogRecord.APPLIED;
         emit(PATHS, record.finish(tick - record.requestTick(), outcome));

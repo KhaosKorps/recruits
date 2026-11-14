@@ -57,6 +57,8 @@ public final class DetourSearch {
             DetourNodeEvaluator.setNextStart(null);
         }
         if (logged != null) {
+            PathLog.handedBack(logged, path);
+            PathLog.taken(path); // the plan reads every search's result
             if (path instanceof AsyncPath) {
                 AsyncPathProcessor.awaitProcessing(path, level.getServer(), result -> PathLog.arrived(logged, result, false, level.getGameTime()));
             } else {

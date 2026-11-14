@@ -116,6 +116,47 @@ public class PathLogGameTests {
     }
 
     /**
+     * A search run on the server thread whose path is never walked (as the melee goal's check that a
+     * target is reachable) is logged as discarded: the next path walked replaces it.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 40, batch = LOG_ON_QUEUE_FULL)
+    public static void withPathLogOnASearchOnTheServerThreadNeverWalkedIsLoggedAsDiscarded(GameTestHelper helper) {
+        if (!RecruitsServerConfig.UseAsyncPathfinding.get()) {
+            helper.succeed();
+            return;
+        }
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        AbstractRecruitEntity recruit = helper.spawn(com.talhanation.recruits.init.ModEntityTypes.RECRUIT.get(), 2, 3, 2);
+        recruit.setNoAi(true);
+        // Tick 6, after the other test in this batch has filled the queue at tick 3 and let it go.
+        helper.runAtTickTime(6, () -> {
+            if (!PathLog.isOn()) throw new GameTestAssertException("setup: PathLog isn't on");
+            recruit.setOnGround(true);
+            com.talhanation.recruits.pathfinding.AsyncPathNavigation navigation =
+                    (com.talhanation.recruits.pathfinding.AsyncPathNavigation) recruit.getNavigation();
+            java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+            try {
+                fillTheWorkersAndTheirQueue(helper, release);
+                navigation.createPath(helper.absolutePos(new net.minecraft.core.BlockPos(13, 3, 2)), 1);
+            } finally {
+                release.countDown();
+            }
+        });
+        helper.runAtTickTime(14, () -> {
+            List<String[]> rows = rows(PathLog.PATHS, recruit);
+            recruit.discard();
+            String[] row = rows.stream().filter(r -> r[15].equals("M")).findFirst().orElseThrow(() ->
+                    new GameTestAssertException("setup: no search ran on the server thread: " + rows.size() + " rows"));
+            if (!row[18].equals("D")) {
+                throw new GameTestAssertException("a search on the server thread that was never walked is logged with outcome " + row[18]
+                        + ": " + String.join(",", row));
+            }
+            helper.succeed();
+        });
+    }
+
+    /**
      * Holds every path worker on a latched job and fills the queue behind them, so the next search is
      * turned away. A latched job turned away itself runs on the server thread and returns at once.
      */
@@ -135,7 +176,10 @@ public class PathLogGameTests {
         for (int i = 0; i < workers; i++) new com.talhanation.recruits.pathfinding.AsyncPath(new ArrayList<>(), at, helper.getLevel(), blocker);
         long until = System.nanoTime() + 2_000_000_000L;
         while (com.talhanation.recruits.pathfinding.AsyncPathProcessor.queuedJobs() > 0 && System.nanoTime() < until) Thread.onSpinWait();
-        for (int i = 0; i < workers * 8; i++) new com.talhanation.recruits.pathfinding.AsyncPath(new ArrayList<>(), at, helper.getLevel(), blocker);
+        // Topped up until full: a worker that was still free takes a job, and one turned away returns at once.
+        for (int i = 0; i < workers * 24 && com.talhanation.recruits.pathfinding.AsyncPathProcessor.queuedJobs() < workers * 8; i++) {
+            new com.talhanation.recruits.pathfinding.AsyncPath(new ArrayList<>(), at, helper.getLevel(), blocker);
+        }
         if (com.talhanation.recruits.pathfinding.AsyncPathProcessor.queuedJobs() < workers * 8) {
             throw new GameTestAssertException("setup: the worker queue holds only " + com.talhanation.recruits.pathfinding.AsyncPathProcessor.queuedJobs());
         }

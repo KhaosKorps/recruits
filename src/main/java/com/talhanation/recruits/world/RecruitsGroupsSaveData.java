@@ -14,7 +14,7 @@ public class RecruitsGroupsSaveData extends SavedData {
     private Map<UUID, UUID> redirects = new HashMap<>();
     private Map<UUID, UUID> recruitRedirects = new HashMap<>();
     public static RecruitsGroupsSaveData get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(RecruitsGroupsSaveData::load, RecruitsGroupsSaveData::new, FILE_ID);
+        return level.getServer().overworld().getDataStorage().computeIfAbsent(RecruitsGroupsSaveData::load, RecruitsGroupsSaveData::new, FILE_ID); // KhaosKorps fork: one store, kept with the Overworld, whichever dimension asks
     }
 
     public static RecruitsGroupsSaveData load(CompoundTag nbt) {

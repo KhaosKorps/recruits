@@ -16,7 +16,7 @@ public class RecruitsTeamSaveData extends SavedData {
     private Map<String, RecruitsFaction> teams = new HashMap<>();
 
     public static RecruitsTeamSaveData get(ServerLevel level) {
-        DimensionDataStorage storage = level.getDataStorage();
+        DimensionDataStorage storage = level.getServer().overworld().getDataStorage(); // KhaosKorps fork: one store, kept with the Overworld, whichever dimension asks
         return storage.computeIfAbsent(RecruitsTeamSaveData::load, RecruitsTeamSaveData::new, FILE_ID);
     }
 

@@ -21,7 +21,7 @@ public class RecruitsWorldSaveData extends SavedData {
     }
 
     public static RecruitsWorldSaveData get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(
+        return level.getServer().overworld().getDataStorage().computeIfAbsent( // KhaosKorps fork: one store, kept with the Overworld, whichever dimension asks
                 RecruitsWorldSaveData::load,
                 RecruitsWorldSaveData::new,
                 FILE_ID);

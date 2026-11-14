@@ -52,7 +52,7 @@ public class RecruitPlayerUnitSaveData extends SavedData {
         return recruitCountMap;
     }
     public static RecruitPlayerUnitSaveData get(ServerLevel level) {
-        return level
+        return level.getServer().overworld() // KhaosKorps fork: one store, kept with the Overworld, whichever dimension asks
                 .getDataStorage()
                 .computeIfAbsent(RecruitPlayerUnitSaveData::load, RecruitPlayerUnitSaveData::new, DATA_NAME);
     }

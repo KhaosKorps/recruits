@@ -17,7 +17,7 @@ public class RecruitsClaimSaveData extends SavedData {
     private List<RecruitsClaim> claimList = new ArrayList<>();
 
     public static RecruitsClaimSaveData get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(RecruitsClaimSaveData::load, RecruitsClaimSaveData::new, FILE_ID);
+        return level.getServer().overworld().getDataStorage().computeIfAbsent(RecruitsClaimSaveData::load, RecruitsClaimSaveData::new, FILE_ID); // KhaosKorps fork: one store, kept with the Overworld, whichever dimension asks
     }
 
     public static RecruitsClaimSaveData load(CompoundTag nbt) {

@@ -21,7 +21,7 @@ public class RecruitsDiplomacySaveData extends SavedData {
     }
 
     public static RecruitsDiplomacySaveData get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(RecruitsDiplomacySaveData::load, RecruitsDiplomacySaveData::new, DATA_NAME);
+        return level.getServer().overworld().getDataStorage().computeIfAbsent(RecruitsDiplomacySaveData::load, RecruitsDiplomacySaveData::new, DATA_NAME); // KhaosKorps fork: one store, kept with the Overworld, whichever dimension asks
     }
 
     public static RecruitsDiplomacySaveData load(CompoundTag nbt) {

@@ -17,7 +17,7 @@ public class RecruitsTreatySaveData extends SavedData {
     }
 
     public static RecruitsTreatySaveData get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(RecruitsTreatySaveData::load, RecruitsTreatySaveData::new, DATA_NAME);
+        return level.getServer().overworld().getDataStorage().computeIfAbsent(RecruitsTreatySaveData::load, RecruitsTreatySaveData::new, DATA_NAME); // KhaosKorps fork: one store, kept with the Overworld, whichever dimension asks
     }
 
     public static RecruitsTreatySaveData load(CompoundTag nbt) {

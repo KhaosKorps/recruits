@@ -133,6 +133,74 @@ public class CrowdAtRavineGameTests {
         return out.append('}').toString();
     }
 
+    /**
+     * A ledge staircase down the north wall at x = 30..32, as natural ravines have: stand height 6 at
+     * z = 20 and 3 at z = 21, above the floor at 1, so each step down is a drop of 3 or less.
+     */
+    private static void ledgeStaircase(GameTestHelper helper) {
+        for (int x = 30; x <= 32; x++) {
+            for (int y = 1; y < 6; y++) helper.setBlock(x, y, 20, Blocks.STONE);
+            for (int y = 1; y < 3; y++) helper.setBlock(x, y, 21, Blocks.STONE);
+        }
+    }
+
+    /**
+     * 24 recruits wait at the rim for their owner across the ravine. At tick 100 a husk (a zombie that
+     * doesn't burn by day) appears on the far rim beside the owner and every recruit is set on it; at
+     * tick 160 it is moved down onto the ravine floor, as one that walked in. Measured at tick 400:
+     * how many went over the edge or down into the ravine, and how close the rest stand.
+     */
+    private static void crowdWithATargetInTheRavine(GameTestHelper helper, boolean ledges) {
+        deepRavine(helper);
+        if (ledges) ledgeStaircase(helper);
+        ServerPlayer owner = owner(helper, 24.5, 10, 30.5);
+        pin(helper, owner, 24.5, 10, 30.5);
+        int size = 24;
+        List<AbstractRecruitEntity> crowd = new ArrayList<>();
+        for (int i = 0; i < size; i++) crowd.add(followingRecruit(helper, owner, 12 + i, 9, 4));
+        net.minecraft.world.entity.monster.Husk[] husk = {null};
+        helper.runAfterDelay(1, () -> assertFollowPreconditions(crowd.get(0)));
+        helper.runAtTickTime(100, () -> {
+            husk[0] = helper.spawn(net.minecraft.world.entity.EntityType.HUSK, new BlockPos(26, 9, 28));
+            husk[0].setPersistenceRequired();
+            crowd.forEach(recruit -> recruit.setTarget(husk[0]));
+        });
+        helper.runAtTickTime(160, () -> {
+            net.minecraft.world.phys.Vec3 floor = helper.absoluteVec(new net.minecraft.world.phys.Vec3(26.5, 1, 23.5));
+            husk[0].teleportTo(floor.x, floor.y, floor.z);
+            crowd.forEach(recruit -> { if (recruit.isAlive()) recruit.setTarget(husk[0]); });
+        });
+        helper.runAtTickTime(MEASURE_AT, () -> {
+            int[] atEnd = new int[LOOK + 2];
+            int down = 0;
+            for (AbstractRecruitEntity recruit : crowd) {
+                if (!recruit.isAlive() || relative(helper, recruit).y < 8.5) {
+                    down++;
+                    continue;
+                }
+                atEnd[toDrop(helper, recruit)]++;
+            }
+            String counts = "went over or down " + down + " of " + size + "; the rest by blocks from the drop " + histogram(atEnd);
+            Main.LOGGER.info("[KhaosKorps measure] {} recruits set on a target in a deep ravine{}: {}", size,
+                    ledges ? " with a ledge staircase" : "", counts);
+            removeOwner(helper, owner);
+            crowd.forEach(AbstractRecruitEntity::discard);
+            if (husk[0] != null) husk[0].discard();
+            if (down > 0 || atEnd[1] > 0) throw new GameTestAssertException(size + " recruits set on a target in the ravine: " + counts);
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = MEASURE_AT + 20, required = false, batch = FALL_THREE)
+    public static void aCrowdSetOnATargetInASheerRavineStaysOutOfIt(GameTestHelper helper) {
+        crowdWithATargetInTheRavine(helper, false);
+    }
+
+    @GameTest(template = ARENA, timeoutTicks = MEASURE_AT + 20, required = false, batch = FALL_THREE)
+    public static void aCrowdSetOnATargetInARavineWithLedgesStaysOutOfIt(GameTestHelper helper) {
+        crowdWithATargetInTheRavine(helper, true);
+    }
+
     @GameTest(template = ARENA, timeoutTicks = MEASURE_AT + 20, required = false, batch = FALL_THREE)
     public static void aLoneRecruitAtADeepRavineWaitsBackFromTheEdge(GameTestHelper helper) {
         crowdAtTheRavine(helper, 1);

@@ -18,6 +18,7 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -26,29 +27,37 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
 /**
  * PathLog: the measurement log. While the setting is on, three CSV files are written to
- * logs/recruits-paths/ in the server directory, named by the time (UTC) logging started: one row per
- * path search of every kind (PathLogRecord), one row per following recruit every 100 ticks
- * (PathLogSummary), and one row per settings change (PathLogSettingsRow). PathLogWriter's thread
- * writes them; the server log gets one line when logging starts and one when it stops.
+ * logs/recruits-paths/ in the server directory, named by the time (UTC, to the millisecond) logging
+ * started: one row per path search of every kind (PathLogRecord), one row per following recruit
+ * every 100 ticks (PathLogSummary), and one row per settings change (PathLogSettingsRow).
+ * PathLogWriter's thread writes them; the server log gets one line when logging starts and one when
+ * the files are closed.
  *
  * The hooks are single calls from the navigation, the path search, the follow and melee goals and
  * the detour search. With the setting off each costs one volatile read. They run on the server
  * thread, except the search hooks (searchStarted, nodes, searchFound, searchFailed, searchEnded),
- * which run wherever the search does.
+ * which run wherever the search does and never throw: a fault there turns logging off.
+ *
+ * With UseAsyncPathfinding off, searches run in vanilla's PathFinder, which doesn't report how many
+ * nodes it took, so those rows have nodes -1.
  */
 public final class PathLog {
 
     public static final int PATHS = 0, RECRUITS = 1, SETTINGS = 2;
     private static final String[] FILES = {"paths", "recruits", "settings"};
-    private static final DateTimeFormatter STARTED = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
+    private static final DateTimeFormatter STARTED = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssSSS'Z'");
 
     private static volatile boolean on;
     private static volatile PathLogWriter writer;
     private static volatile BiConsumer<Integer, String> tap;
+    /** Set by a search hook that failed, on whatever thread; the server tick then turns logging off. */
+    private static volatile boolean faulted;
+    private static final AtomicBoolean FAULT_REPORTED = new AtomicBoolean();
 
     // Server thread only.
     private static boolean failedUntilOff;
@@ -58,11 +67,11 @@ public final class PathLog {
     private static boolean loggedAsync;
     private static int loggedThreads;
     private static long droppedAtLastSummary;
-    private static Mob taggedMob;
+    @Nullable private static PathNavigation taggedNavigation;
     private static char taggedPurpose;
     private static final Map<AbstractRecruitEntity, PathLogSummary> FOLLOWERS = new IdentityHashMap<>();
 
-    /** The request handed from the navigation to the search it is about to start, on the server thread. */
+    /** The request handed from the navigation to the search it is about to set up, on the server thread. */
     private static final ThreadLocal<PathLogRecord> REQUEST = new ThreadLocal<>();
     /** The node count processPath leaves for the search hooks, on whichever thread runs the search. */
     private static final ThreadLocal<int[]> NODES = ThreadLocal.withInitial(() -> new int[]{-1});
@@ -82,8 +91,9 @@ public final class PathLog {
     // ---- lifecycle ----
 
     /**
-     * Opens, closes and summarizes. Logging must never stop the server: anything unexpected here is
-     * reported once and turns logging off until the setting is turned off and on again.
+     * Opens, closes and summarizes. Logging must never stop the server: anything unexpected here,
+     * or in a search hook, is reported once and turns logging off until the setting is turned off
+     * and on again.
      */
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
@@ -92,12 +102,7 @@ public final class PathLog {
             tick(event);
         } catch (RuntimeException e) {
             Main.LOGGER.warn("[KhaosKorps] Path log: stopped after an unexpected error, until PathLog is turned off and on again", e);
-            failedUntilOff = true;
-            on = false;
-            FOLLOWERS.clear();
-            PathLogWriter closing = writer;
-            writer = null;
-            if (closing != null) closing.close(2000);
+            stopAfterFault();
         }
     }
 
@@ -106,14 +111,18 @@ public final class PathLog {
         long tick = event.getServer().overworld().getGameTime();
         if (!settings.pathLog()) {
             failedUntilOff = false;
-            if (on) close(tick, settings);
+            if (on) close(tick, settings, 0);
             return;
         }
         if (!on && !failedUntilOff) open(event.getServer());
         if (!on) return;
+        if (faulted) {
+            stopAfterFault();
+            return;
+        }
         if (writer.hasFailed()) {
             failedUntilOff = true;
-            close(tick, settings);
+            close(tick, settings, 0);
             return;
         }
         logSettingsIfChanged(settings, tick);
@@ -122,51 +131,76 @@ public final class PathLog {
 
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
-        if (on) close(event.getServer().overworld().getGameTime(), FollowSettings.current());
+        try {
+            if (on) close(event.getServer().overworld().getGameTime(), FollowSettings.current(), 2000);
+        } catch (RuntimeException e) {
+            Main.LOGGER.warn("[KhaosKorps] Path log: couldn't close cleanly", e);
+        }
         failedUntilOff = false;
     }
 
     private static void open(MinecraftServer server) {
         String prefix = ZonedDateTime.now(ZoneOffset.UTC).format(STARTED);
         java.nio.file.Path directory = server.getServerDirectory().toPath().resolve("logs").resolve("recruits-paths");
+        PathLogWriter opened;
         try {
-            writer = new PathLogWriter(new PathLogWriter.FileSink(directory, prefix, FILES,
+            PathLogWriter[] self = {null};
+            opened = new PathLogWriter(new PathLogWriter.FileSink(directory, prefix, FILES,
                     new String[]{PathLogRecord.HEADER, PathLogSummary.HEADER, PathLogSettingsRow.HEADER}),
                     PathLogWriter.CAPACITY, 1000,
-                    e -> Main.LOGGER.warn("[KhaosKorps] Path log: writing failed, so it stops until PathLog is turned off and on again", e));
+                    e -> Main.LOGGER.warn("[KhaosKorps] Path log: writing failed, so it stops until PathLog is turned off and on again", e),
+                    () -> {
+                        PathLogWriter closed = self[0];
+                        if (closed != null) {
+                            Main.LOGGER.info("[KhaosKorps] Path log closed: {} rows, {} dropped", closed.written(), closed.dropped());
+                        }
+                    });
+            self[0] = opened;
         } catch (IOException e) {
             Main.LOGGER.warn("[KhaosKorps] Path log: can't open {}, so it stays off until PathLog is turned off and on again", directory, e);
             failedUntilOff = true;
             return;
         }
+        writer = opened;
         seq = 0;
         settingsVersion = 0;
         loggedSettings = null;
         droppedAtLastSummary = 0;
         FOLLOWERS.clear();
-        taggedMob = null;
+        taggedNavigation = null;
+        faulted = false;
+        FAULT_REPORTED.set(false);
         on = true;
         Main.LOGGER.info("[KhaosKorps] Path log on: {} ({}-paths.csv, -recruits.csv, -settings.csv)", directory, prefix);
     }
 
-    private static void close(long tick, FollowSettings settings) {
+    /** Writes the windows as they stand and closes; {@code waitMillis} 0 doesn't wait for the files. */
+    private static void close(long tick, FollowSettings settings, long waitMillis) {
         summarize(tick, settings, true);
-        on = false;
-        FOLLOWERS.clear();
-        taggedMob = null;
-        PathLogWriter closing = writer;
-        writer = null;
-        if (closing == null) return;
-        closing.close(2000);
-        Main.LOGGER.info("[KhaosKorps] Path log closed: {} rows, {} dropped", closing.written(), closing.dropped());
+        shutDown(waitMillis);
     }
 
-    private static void emit(int file, String row) {
-        if (row == null) return;
-        PathLogWriter current = writer;
-        if (current != null) current.offer(file, row);
+    private static void stopAfterFault() {
+        failedUntilOff = true;
+        shutDown(0);
+    }
+
+    private static void shutDown(long waitMillis) {
+        on = false;
+        FOLLOWERS.clear();
+        taggedNavigation = null;
+        PathLogWriter closing = writer;
+        writer = null;
+        if (closing != null) closing.close(waitMillis);
+    }
+
+    /** Whether the writer took the row. */
+    private static boolean emit(int file, String row) {
+        if (row == null) return false;
         BiConsumer<Integer, String> listener = tap;
         if (listener != null) listener.accept(file, row);
+        PathLogWriter current = writer;
+        return current != null && current.offer(file, row);
     }
 
     private static void logSettingsIfChanged(FollowSettings settings, long tick) {
@@ -182,65 +216,79 @@ public final class PathLog {
 
     /**
      * One tick for every follower's window, and a row for each full one. With {@code all}, every
-     * window is written as it stands instead (logging is closing). A recruit that left the world
-     * gets its last row; one that spent a whole window out of Follow Me is dropped without a row,
-     * until its follow goal sees it again.
+     * window is written as it stands instead (logging is closing). A recruit that left the world gets
+     * its last row if its window has any ticks, and is dropped either way; one that spent a whole
+     * window out of Follow Me is dropped without a row, until its follow goal sees it again. The
+     * rows dropped since the last summary rows go into this pass's rows, and count as reported only
+     * once one of them reaches the writer.
      */
     private static void summarize(long tick, FollowSettings settings, boolean all) {
         PathLogWriter current = writer;
         long dropped = current == null ? 0 : current.dropped() - droppedAtLastSummary;
-        boolean wrote = false;
+        boolean reported = false;
         for (Iterator<Map.Entry<AbstractRecruitEntity, PathLogSummary>> it = FOLLOWERS.entrySet().iterator(); it.hasNext(); ) {
             Map.Entry<AbstractRecruitEntity, PathLogSummary> entry = it.next();
             AbstractRecruitEntity recruit = entry.getKey();
             PathLogSummary window = entry.getValue();
-            boolean gone = recruit.isRemoved();
-            if (!gone && !all) {
-                LivingEntity owner = recruit.getOwner();
-                double distance = owner != null && owner.level() == recruit.level() ? recruit.distanceTo(owner) : -1;
-                window.tick(recruit.getFollowState() == 1, distance, distance >= 0 && distance * distance > settings.followStopDistanceSqr());
-            }
-            if (!(gone || all || window.windowFull()) || window.isEmpty()) continue;
-            if (!window.followedThisWindow() && !gone && !all) {
+            if (recruit.isRemoved()) {
+                if (!window.isEmpty()) reported |= emit(RECRUITS, window.row(tick, shortId(recruit), speedMilli(recruit), dropped));
                 it.remove();
                 continue;
             }
-            emit(RECRUITS, window.row(tick, shortId(recruit), speedMilli(recruit), dropped));
-            wrote = true;
-            if (gone) it.remove();
+            if (!all) {
+                LivingEntity owner = recruit.getOwner();
+                double distance = owner != null && owner.level() == recruit.level() ? recruit.distanceTo(owner) : -1;
+                window.tick(recruit.getFollowState() == 1, distance, distance >= 0 && distance * distance > settings.followStopDistanceSqr());
+                if (!window.windowFull()) continue;
+                if (!window.followedThisWindow()) {
+                    it.remove();
+                    continue;
+                }
+            } else if (window.isEmpty()) {
+                continue;
+            }
+            reported |= emit(RECRUITS, window.row(tick, shortId(recruit), speedMilli(recruit), dropped));
         }
-        if (wrote && current != null) droppedAtLastSummary += dropped;
+        if (reported) droppedAtLastSummary += dropped;
     }
 
     // ---- what a search is for, from its call site ----
 
-    /** The next search this mob's navigation starts is for {@code purpose}, a PathLogRecord code. */
+    /** The next search {@code mob}'s navigation starts is for {@code purpose}, a PathLogRecord code. */
     public static void purpose(Mob mob, char purpose) {
         if (!on) return;
-        taggedMob = mob;
+        taggedNavigation = mob.getNavigation();
         taggedPurpose = purpose;
     }
 
-    /** At the start of a search request: the purpose set for this mob, or OTHER; it is used up either way. */
-    public static char takePurpose(Mob mob) {
+    /** At the start of a search request on {@code navigation}: the purpose set for it, or OTHER; any tag is used up either way. */
+    public static char takePurpose(PathNavigation navigation) {
         if (!on) return PathLogRecord.OTHER;
-        char purpose = taggedMob == mob ? taggedPurpose : PathLogRecord.OTHER;
-        taggedMob = null;
+        char purpose = taggedNavigation == navigation ? taggedPurpose : PathLogRecord.OTHER;
+        taggedNavigation = null;
         return purpose;
     }
 
     // ---- a search: request, run, result ----
 
     /**
-     * Right before a search starts, on the server thread: its record, also handed to the search
-     * through the request slot until {@link #requestDone} (call it in a finally). Null when off.
+     * Right before a search is set up, on the server thread: its record, also handed to the search
+     * through the request slot until {@link #requestDone}. Null when off. Distance and height are
+     * measured from the mob.
      */
     public static PathLogRecord request(Mob mob, char purpose, Set<BlockPos> targets, int budget) {
+        return request(mob, purpose, targets, budget, null);
+    }
+
+    /** As above, measured from {@code from} when the search starts somewhere other than where the mob stands. */
+    public static PathLogRecord request(Mob mob, char purpose, Set<BlockPos> targets, int budget, @Nullable BlockPos from) {
         if (!on || targets.isEmpty()) return null;
         BlockPos target = targets.iterator().next();
+        Vec3 start = from == null ? mob.position() : Vec3.atBottomCenterOf(from);
+        int startY = from == null ? mob.getBlockY() : from.getY();
         PathLogRecord record = new PathLogRecord(++seq, settingsVersion, mob.level().getGameTime(), shortId(mob),
-                PathLogRecord.NAV_RECRUIT, purpose, Math.sqrt(mob.distanceToSqr(Vec3.atBottomCenterOf(target))),
-                target.getY() - mob.getBlockY(), budget, AsyncPathProcessor.queuedJobs(), System.nanoTime());
+                PathLogRecord.NAV_RECRUIT, purpose, Math.sqrt(start.distanceToSqr(Vec3.atBottomCenterOf(target))),
+                target.getY() - startY, budget, AsyncPathProcessor.queuedJobs(), System.nanoTime());
         REQUEST.set(record);
         return record;
     }
@@ -257,25 +305,42 @@ public final class PathLog {
     /** As the search starts running, wherever it runs: the start time for the hooks below. */
     public static long searchStarted(PathLogRecord record) {
         if (record == null) return 0L;
-        NODES.get()[0] = -1;
+        try {
+            NODES.get()[0] = -1;
+        } catch (RuntimeException e) {
+            hookFailed(e);
+        }
         return System.nanoTime();
     }
 
     /** processPath, as it returns: how many nodes it took off the open set. */
     public static void nodes(int count) {
-        if (on) NODES.get()[0] = count;
+        if (!on) return;
+        try {
+            NODES.get()[0] = count;
+        } catch (RuntimeException e) {
+            hookFailed(e);
+        }
     }
 
     public static void searchFound(PathLogRecord record, Path path, long started) {
         if (record == null) return;
-        record.searched(threadCode(), NODES.get()[0], micros(started));
-        result(record, path);
+        try {
+            record.searched(threadCode(), NODES.get()[0], micros(started));
+            result(record, path);
+        } catch (RuntimeException e) {
+            hookFailed(e);
+        }
     }
 
     public static void searchFailed(PathLogRecord record, long started) {
         if (record == null) return;
-        record.searched(threadCode(), NODES.get()[0], micros(started));
-        record.failed();
+        try {
+            record.searched(threadCode(), NODES.get()[0], micros(started));
+            record.failed();
+        } catch (RuntimeException e) {
+            hookFailed(e);
+        }
     }
 
     /**
@@ -284,30 +349,49 @@ public final class PathLog {
      */
     public static void searchEnded(PathLogRecord record, long started) {
         if (record == null || record.ran()) return;
-        record.searched(threadCode(), NODES.get()[0], micros(started));
-        record.failed();
-        emit(PATHS, record.finish(-1, PathLogRecord.ERROR));
+        try {
+            record.searched(threadCode(), NODES.get()[0], micros(started));
+            record.failed();
+            emit(PATHS, record.finish(-1, PathLogRecord.ERROR));
+        } catch (RuntimeException e) {
+            hookFailed(e);
+        }
     }
 
-    /** A search that ran inline on the server thread, with vanilla's PathFinder: its row now. */
+    /**
+     * A search that ran inline on the server thread with vanilla's PathFinder: its row now. No path
+     * means no search ran: the mob had no start node.
+     */
     public static void ranInline(PathLogRecord record, Path path) {
         if (record == null) return;
-        record.searched(PathLogRecord.INLINE, -1, micros(record.requestNanos()));
-        if (path != null) result(record, path);
+        if (path != null) {
+            record.searched(PathLogRecord.INLINE, -1, micros(record.requestNanos()));
+            result(record, path);
+        }
         emit(PATHS, record.finish(0, path == null ? PathLogRecord.NO_PATH : PathLogRecord.APPLIED));
     }
 
-    /** A search's result back on the server thread at {@code tick}: walked, or discarded for a newer path. */
-    public static void arrived(PathLogRecord record, Path path, boolean discarded, long tick) {
+    /** The search's path has been handed back to its caller; a result arriving before this is the caller's to walk. */
+    public static void handedBack(PathLogRecord record) {
+        if (record != null) record.handedBack();
+    }
+
+    /**
+     * A search's result back on the server thread at {@code tick}: walked, or discarded because a
+     * newer path replaced it. Discarded only applies once the path was handed back: a search that
+     * finished at once on the server thread (queue full, or workers off) arrives before its caller
+     * has even taken the path.
+     */
+    public static void arrived(PathLogRecord record, Path path, boolean replaced, long tick) {
         if (record == null) return;
-        char outcome = discarded ? PathLogRecord.DISCARDED
+        char outcome = replaced && record.wasHandedBack() ? PathLogRecord.DISCARDED
                 : path == null || path.getNodeCount() == 0 ? PathLogRecord.NO_PATH : PathLogRecord.APPLIED;
         emit(PATHS, record.finish(tick - record.requestTick(), outcome));
     }
 
     // ---- a mounted follower, on its horse's vanilla navigation ----
 
-    /** The path a mounted follower's navigation held before a move, to tell a new search from a reused path. */
+    /** The path a mounted follower's navigation held before a move, to tell a new search from none. */
     public record VanillaMove(Path before, long started) {
     }
 
@@ -315,16 +399,14 @@ public final class PathLog {
         return on ? new VanillaMove(navigation.getPath(), System.nanoTime()) : null;
     }
 
-    /** After the move: a row if the navigation searched (it holds a new path), else a reuse. */
+    /**
+     * After the move: a row if the navigation holds a new path. Vanilla's navigation gives no sign
+     * of a search that found nothing, or of a new path equal to the old one, so those leave no row.
+     */
     public static void vanillaMoved(VanillaMove move, AbstractRecruitEntity recruit, PathNavigation navigation, Entity target) {
         if (move == null || !on) return;
         Path after = navigation.getPath();
-        if (after == null) return;
-        if (after == move.before()) {
-            PathLogSummary window = FOLLOWERS.get(recruit);
-            if (window != null) window.reused();
-            return;
-        }
+        if (after == null || after == move.before()) return;
         BlockPos at = target.blockPosition();
         PathLogRecord record = new PathLogRecord(++seq, settingsVersion, recruit.level().getGameTime(), shortId(recruit),
                 PathLogRecord.NAV_VANILLA, PathLogRecord.FOLLOW, recruit.distanceTo(target), at.getY() - recruit.getBlockY(),
@@ -357,9 +439,10 @@ public final class PathLog {
         if (window != null) window.stalled();
     }
 
-    public static void gaveUp(Mob mob) {
+    /** {@code mob}'s {@code navigation} refused a move because it had given up; a purpose set for it is used up. */
+    public static void gaveUp(Mob mob, PathNavigation navigation) {
         if (!on) return;
-        if (taggedMob == mob) taggedMob = null;
+        if (taggedNavigation == navigation) taggedNavigation = null;
         PathLogSummary window = FOLLOWERS.get(mob);
         if (window != null) window.gaveUp();
     }
@@ -371,6 +454,13 @@ public final class PathLog {
     }
 
     // ---- helpers ----
+
+    private static void hookFailed(RuntimeException e) {
+        faulted = true;
+        if (FAULT_REPORTED.compareAndSet(false, true)) {
+            Main.LOGGER.warn("[KhaosKorps] Path log: a search hook failed, so logging stops until PathLog is turned off and on again", e);
+        }
+    }
 
     private static void result(PathLogRecord record, Path path) {
         if (path == null) return;

@@ -48,7 +48,7 @@ public final class DetourSearch {
                 ? new AsyncPathfinder(DetourNodeEvaluator.create(), budget, DetourNodeEvaluator.GENERATOR, level)
                 : new PathFinder(DetourNodeEvaluator.create(), budget);
         DetourNodeEvaluator.setNextStart(from);
-        PathLogRecord logged = PathLog.request(mob, PathLogRecord.DETOUR, ImmutableSet.of(to), budget);
+        PathLogRecord logged = PathLog.isOn() ? PathLog.request(mob, PathLogRecord.DETOUR, ImmutableSet.of(to), budget, from) : null;
         Path path;
         try {
             path = finder.findPath(region, mob, ImmutableSet.of(to), range, reach, 1.0F);

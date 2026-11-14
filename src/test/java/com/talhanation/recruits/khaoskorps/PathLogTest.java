@@ -174,6 +174,37 @@ class PathLogTest {
         assertTrue(sink.closed);
     }
 
+    /** Rows still queued when the sink fails are thrown away, and counted as dropped. */
+    @Test
+    void aSinkErrorCountsTheRowsItThrowsAway() throws InterruptedException {
+        MemorySink sink = new MemorySink(true, 3);
+        CountDownLatch reported = new CountDownLatch(1);
+        PathLogWriter writer = new PathLogWriter(sink, 64, 50, e -> reported.countDown());
+        writer.offer(0, "first");
+        assertTrue(sink.firstRow.await(5, TimeUnit.SECONDS));
+        for (int i = 0; i < 5; i++) assertTrue(writer.offer(0, "row" + i));
+        sink.release.countDown();
+        assertTrue(reported.await(5, TimeUnit.SECONDS));
+        writer.close(2000);
+        assertEquals(2, sink.rows.size(), "rows written before the failure");
+        assertEquals(3, writer.dropped(), "the failing row is lost; the 3 still queued are thrown away and counted");
+    }
+
+    /** Closing without waiting returns at once, even with the writer busy, and every queued row is still written. */
+    @Test
+    void closingWithoutWaitingReturnsAtOnceAndStillWritesEverything() throws InterruptedException {
+        MemorySink sink = new MemorySink(true, -1);
+        PathLogWriter writer = new PathLogWriter(sink, 64, 50, e -> { });
+        writer.offer(0, "first");
+        assertTrue(sink.firstRow.await(5, TimeUnit.SECONDS));
+        for (int i = 0; i < 5; i++) writer.offer(0, "row" + i);
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(2), () -> writer.close(0));
+        sink.release.countDown();
+        for (int wait = 0; wait < 100 && !sink.closed; wait++) Thread.sleep(50);
+        assertTrue(sink.closed, "the sink was never closed");
+        assertEquals(6, sink.rows.size());
+    }
+
     /**
      * Dada's volume model: 20 following recruits re-planning every 10 ticks make 40 path rows a
      * second, plus 4 summary rows. A whole minute of that fits in the queue with the writer stalled.

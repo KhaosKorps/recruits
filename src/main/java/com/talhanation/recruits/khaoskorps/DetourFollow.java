@@ -13,16 +13,23 @@ import java.util.List;
 /**
  * A following recruit's part in a detour: noticing it is stuck, asking {@link DetourRoutes} for a
  * plan, and walking the plan's waypoints, re-checking at each waypoint for a direct path to its
- * owner. One per follow goal. Its state outlives the goal's quick stops and starts (a stuck recruit's
- * goal stops each time its cut-back path runs out), but not a longer pause: after
- * {@link #FORGET_AFTER_TICKS} stopped, what it noted is forgotten. Server thread only.
+ * owner. One per follow goal. What it noted about getting stuck outlives the goal's quick stops and
+ * starts (a stuck recruit's goal stops each time its cut-back path runs out, and starts again at the
+ * next start check), but not a longer pause, which forgets it. The route being walked, and how far
+ * along it, outlive any pause while the plan lasts. Server thread only.
  */
 public final class DetourFollow {
 
     /** How long a recruit may make no progress, with no path to its owner, before a plan is asked for. */
     public static final int STUCK_TICKS = 60;
-    /** A follow goal stopped this long starts again with nothing noted. */
-    public static final int FORGET_AFTER_TICKS = STUCK_TICKS;
+    /**
+     * A follow goal stopped longer than this starts again with nothing noted about getting stuck:
+     * {@link #STUCK_TICKS}, or twice the start check, whichever is longer, since a stuck recruit's goal
+     * is stopped about one start check at a time.
+     */
+    static long forgetAfterTicks(FollowSettings settings) {
+        return Math.max(STUCK_TICKS, 2L * settings.followStartCheckTicks());
+    }
     /** Moving less than this, in blocks, isn't progress. */
     private static final double PROGRESS = 1.5;
     /** Within this many blocks of a waypoint, horizontally, the recruit has reached it. */
@@ -51,12 +58,11 @@ public final class DetourFollow {
         this.stoppedAt = tick;
     }
 
-    /** The follow goal started at {@code tick}: after a long pause, or the first time, nothing noted before counts. */
-    public void started(long tick) {
-        if (this.stoppedAt >= 0 && tick - this.stoppedAt <= FORGET_AFTER_TICKS) return;
+    /** The follow goal started at {@code tick}: after a long pause, or the first time, what was noted about getting stuck no longer counts. */
+    public void started(long tick, FollowSettings settings) {
+        if (this.stoppedAt >= 0 && tick - this.stoppedAt <= forgetAfterTicks(settings)) return;
         this.stillAt = null;
         this.lastPathReached = null;
-        this.walking = null;
         this.checkingDirect = false;
     }
 
@@ -68,7 +74,9 @@ public final class DetourFollow {
      * didn't reach the owner; one that can reach the owner, such as one already on the owner's side,
      * follows as usual. A recruit stuck for {@link #STUCK_TICKS} asks for a plan, and replaces a
      * found one that is no use to it: one with no waypoints (its planner found the owner in reach),
-     * or one it has walked to the end.
+     * or one it has walked to the end; it must have been stuck that long since that plan ended, so a
+     * planner that keeps disagreeing with it replans at most once per stuck spell. While another
+     * recruit's replacement is being planned, a recruit partway along the old route keeps to it.
      */
     @Nullable
     public BlockPos waypoint(Mob recruit, LivingEntity owner, FollowSettings settings) {
@@ -78,15 +86,20 @@ public final class DetourFollow {
         }
         this.noteProgress(recruit);
         DetourPlan plan = DetourRoutes.plan(owner.getUUID());
+        if (plan != null && plan.status() == DetourPlan.Status.PLANNING && this.walking != null && this.walking != plan
+                && this.walking.status() == DetourPlan.Status.FOUND && this.next < this.walking.route().size()) {
+            return this.alongRoute(recruit, this.walking);
+        }
         boolean found = plan != null && plan.status() == DetourPlan.Status.FOUND;
         boolean spent = found && (plan.route().isEmpty() || (plan == this.walking && this.next >= plan.route().size()));
         if (found && !spent && (plan == this.walking || Boolean.FALSE.equals(this.lastPathReached))) {
             return this.alongRoute(recruit, plan);
         }
-        long still = recruit.level().getGameTime() - this.stillSince;
+        long now = recruit.level().getGameTime();
+        long still = now - this.stillSince;
         if (still >= STUCK_TICKS && Boolean.FALSE.equals(this.lastPathReached) && owner.onGround()) {
-            if (spent) DetourRoutes.replace(owner, recruit, settings);
-            else DetourRoutes.request(owner, recruit, settings);
+            if (!spent) DetourRoutes.request(owner, recruit, settings);
+            else if (now - Math.max(this.stillSince, plan.endedTick()) >= STUCK_TICKS) DetourRoutes.replace(owner, recruit, settings);
         }
         return null;
     }

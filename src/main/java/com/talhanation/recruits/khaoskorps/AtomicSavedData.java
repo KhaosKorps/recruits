@@ -20,7 +20,8 @@ import java.nio.file.StandardOpenOption;
  * crash, a kill or a full disk partway through a write leaves half a file, which the next load
  * discards whole. This writes the same content to {@code <name>.dat.tmp} first and then moves it over
  * the file in one step, so a failed write leaves the previous file as it was. The new file is put on
- * disk before the move, so a power cut just after it can't leave an empty file under the old name, and
+ * disk before the move where the system allows (best effort), so a power cut just after it can't leave
+ * an empty file under the old name, and
  * a move refused for a moment (a backup tool or virus scanner holding the file) is tried again a few
  * times. Otherwise it behaves as the game's: only dirty data is written, a failure is logged, and the
  * data counts as saved afterwards; the stores mark themselves dirty again at the next autosave.
@@ -39,6 +40,10 @@ public abstract class AtomicSavedData extends SavedData {
             NbtIo.writeCompressed(tag, temporary.toFile());
             try (FileChannel written = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
                 written.force(true);
+            } catch (IOException notForced) {
+                // Best effort: the file is written and closed either way, so the save goes on without the
+                // extra safety (a scanner holding the file, a file system that refuses, an interrupted thread).
+                Main.LOGGER.debug("[KhaosKorps] Could not force {} to disk before moving it", temporary, notForced);
             }
             moveOver(temporary, target);
         } catch (IOException e) {

@@ -49,6 +49,22 @@ public class ArrowCleanerGameTests {
         helper.succeed();
     }
 
+    /**
+     * An arrow whose chunk stops being tracked gets a leave event without being removed, and no join
+     * event when tracking resumes, so the cleaner keeps it. The event is posted as the game would.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
+    public static void anArrowThatLeavesWithoutBeingRemovedStaysInTheCleanersRecord(GameTestHelper helper) {
+        net.minecraft.server.level.ServerLevel level = helper.getLevel();
+        Arrow arrow = helper.spawn(EntityType.ARROW, new Vec3(13.5, 5.0, 2.5));
+        int joined = com.talhanation.recruits.khaoskorps.ArrowCleaner.trackedArrows(level);
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(new net.minecraftforge.event.entity.EntityLeaveLevelEvent(arrow, level));
+        int after = com.talhanation.recruits.khaoskorps.ArrowCleaner.trackedArrows(level);
+        arrow.discard();
+        if (after != joined) throw new GameTestAssertException("the cleaner dropped a live arrow on its leave event: " + joined + " then " + after);
+        helper.succeed();
+    }
+
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 240)
     public static void anArrowAPlayerMayPickUpIsKept(GameTestHelper helper) {
         Arrow arrow = droppedArrow(helper, 6, AbstractArrow.Pickup.ALLOWED, 400);

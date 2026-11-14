@@ -55,6 +55,34 @@ public class SafeSaveGameTests {
         helper.succeed();
     }
 
+    /** A save on a thread whose interrupt flag is set still writes the file; putting it on disk is best effort. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
+    public static void aSaveOnAnInterruptedThreadStillSucceeds(GameTestHelper helper) {
+        Path folder = null;
+        try {
+            folder = Files.createTempDirectory("khaoskorps-safe-save");
+            File file = folder.resolve("kktest.dat").toFile();
+            Store old = new Store("old", false);
+            old.setDirty();
+            old.save(file);
+            Store current = new Store("new", false);
+            current.setDirty();
+            Thread.currentThread().interrupt();
+            try {
+                current.save(file);
+            } finally {
+                Thread.interrupted();
+            }
+            String value = NbtIo.readCompressed(file).getCompound("data").getString("value");
+            if (!"new".equals(value)) throw new GameTestAssertException("a save on an interrupted thread left \"" + value + "\"");
+        } catch (IOException e) {
+            throw new GameTestAssertException("setup: " + e);
+        } finally {
+            deleteQuietly(folder);
+        }
+        helper.succeed();
+    }
+
     /** A save that fails partway leaves the previous file readable, with its data, and no temporary file. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
     public static void aSaveThatFailsPartwayLeavesThePreviousFileWhole(GameTestHelper helper) {

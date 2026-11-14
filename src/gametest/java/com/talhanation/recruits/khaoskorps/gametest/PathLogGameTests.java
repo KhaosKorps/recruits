@@ -42,6 +42,7 @@ import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 public class PathLogGameTests {
 
     private static final String LOG_ON = "khaoskorps_path_log_on";
+    private static final String LOG_ON_QUEUE_FULL = "khaoskorps_path_log_on_queue_full";
 
     /** Every row written since the test server started: {file, row}. */
     private static final ConcurrentLinkedQueue<Object[]> ROWS = new ConcurrentLinkedQueue<>();
@@ -60,10 +61,143 @@ public class PathLogGameTests {
         resetForkSettings();
     }
 
+    @BeforeBatch(batch = LOG_ON_QUEUE_FULL)
+    public static void logOnQueueFull(ServerLevel level) {
+        logOn(level);
+    }
+
+    @AfterBatch(batch = LOG_ON_QUEUE_FULL)
+    public static void afterLogOnQueueFull(ServerLevel level) {
+        resetForkSettings();
+    }
+
+    /**
+     * A search that runs on the server thread because the worker queue is full (thread M) is
+     * walked, so its row says so: outcome A, not D. The workers and their queue are filled with
+     * latched jobs, so the next search is turned away and runs at once on the server thread.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 40, batch = LOG_ON_QUEUE_FULL)
+    public static void withPathLogOnASearchRunOnTheServerThreadIsLoggedAsWalked(GameTestHelper helper) {
+        if (!RecruitsServerConfig.UseAsyncPathfinding.get()) {
+            helper.succeed();
+            return;
+        }
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        AbstractRecruitEntity recruit = helper.spawn(com.talhanation.recruits.init.ModEntityTypes.RECRUIT.get(), 2, 3, 2);
+        recruit.setNoAi(true);
+        Path[] walked = {null};
+        helper.runAtTickTime(3, () -> {
+            if (!PathLog.isOn()) throw new GameTestAssertException("setup: PathLog isn't on");
+            recruit.setOnGround(true);
+            com.talhanation.recruits.pathfinding.AsyncPathNavigation navigation =
+                    (com.talhanation.recruits.pathfinding.AsyncPathNavigation) recruit.getNavigation();
+            java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+            try {
+                fillTheWorkersAndTheirQueue(helper, release);
+                walked[0] = navigation.createPath(helper.absolutePos(new net.minecraft.core.BlockPos(13, 3, 2)), 1);
+                navigation.moveTo(walked[0], 1.0D);
+            } finally {
+                release.countDown();
+            }
+        });
+        helper.runAtTickTime(8, () -> {
+            Path now = recruit.getNavigation().getPath();
+            List<String[]> rows = rows(PathLog.PATHS, recruit);
+            recruit.discard();
+            String[] row = rows.stream().filter(r -> r[15].equals("M")).findFirst().orElseThrow(() ->
+                    new GameTestAssertException("setup: no search ran on the server thread: " + rows.size() + " rows"));
+            if (now != walked[0]) throw new GameTestAssertException("setup: the navigation isn't walking the search's path");
+            if (!row[18].equals("A")) {
+                throw new GameTestAssertException("a search run on the server thread and walked is logged with outcome " + row[18] + ": " + String.join(",", row));
+            }
+            helper.succeed();
+        });
+    }
+
+    /**
+     * Holds every path worker on a latched job and fills the queue behind them, so the next search is
+     * turned away. A latched job turned away itself runs on the server thread and returns at once.
+     */
+    private static void fillTheWorkersAndTheirQueue(GameTestHelper helper, java.util.concurrent.CountDownLatch release) {
+        int workers = Math.max(1, RecruitsServerConfig.AsyncPathfindingThreadsCount.get());
+        java.util.function.Supplier<Path> blocker = () -> {
+            if (Thread.currentThread().getName().startsWith("recruits-path-processor-")) {
+                try {
+                    release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return null;
+        };
+        java.util.Set<net.minecraft.core.BlockPos> at = java.util.Set.of(helper.absolutePos(new net.minecraft.core.BlockPos(1, 3, 2)));
+        for (int i = 0; i < workers; i++) new com.talhanation.recruits.pathfinding.AsyncPath(new ArrayList<>(), at, helper.getLevel(), blocker);
+        long until = System.nanoTime() + 2_000_000_000L;
+        while (com.talhanation.recruits.pathfinding.AsyncPathProcessor.queuedJobs() > 0 && System.nanoTime() < until) Thread.onSpinWait();
+        for (int i = 0; i < workers * 8; i++) new com.talhanation.recruits.pathfinding.AsyncPath(new ArrayList<>(), at, helper.getLevel(), blocker);
+        if (com.talhanation.recruits.pathfinding.AsyncPathProcessor.queuedJobs() < workers * 8) {
+            throw new GameTestAssertException("setup: the worker queue holds only " + com.talhanation.recruits.pathfinding.AsyncPathProcessor.queuedJobs());
+        }
+    }
+
+    /** A follower removed in the tick after its summary row leaves PathLog's list, with no window left to write. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 220, batch = LOG_ON)
+    public static void withPathLogOnAFollowerRemovedRightAfterItsSummaryIsForgotten(GameTestHelper helper) {
+        Scene scene = scene(helper, 1, Long.MAX_VALUE);
+        AbstractRecruitEntity recruit = scene.recruits.get(0);
+        long[] removedAt = {-1};
+        helper.onEachTick(() -> {
+            if (removedAt[0] < 0) {
+                if (!rows(PathLog.RECRUITS, recruit).isEmpty()) {
+                    recruit.discard();
+                    removedAt[0] = helper.getTick();
+                }
+                return;
+            }
+            if (helper.getTick() < removedAt[0] + 3) return;
+            removeOwner(helper, scene.owner);
+            if (followers().containsKey(recruit)) throw new GameTestAssertException("PathLog still holds the removed follower");
+            helper.succeed();
+        });
+    }
+
+    private static java.util.Map<?, ?> followers() {
+        try {
+            java.lang.reflect.Field field = PathLog.class.getDeclaredField("FOLLOWERS");
+            field.setAccessible(true);
+            return (java.util.Map<?, ?>) field.get(null);
+        } catch (ReflectiveOperationException e) {
+            throw new GameTestAssertException("setup: can't read PathLog's followers: " + e);
+        }
+    }
+
+    /** A detour search's row measures from where the search starts, not from where the recruit stands. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 40, batch = LOG_ON)
+    public static void withPathLogOnADetourSearchIsMeasuredFromWhereItStarts(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        AbstractRecruitEntity recruit = helper.spawn(com.talhanation.recruits.init.ModEntityTypes.RECRUIT.get(), 2, 3, 2);
+        recruit.setNoAi(true);
+        helper.runAtTickTime(3, () -> {
+            if (!PathLog.isOn()) throw new GameTestAssertException("setup: PathLog isn't on");
+            com.talhanation.recruits.khaoskorps.DetourSearch.find(helper.getLevel(), recruit,
+                    helper.absolutePos(new net.minecraft.core.BlockPos(10, 3, 2)), helper.absolutePos(new net.minecraft.core.BlockPos(13, 3, 2)), 8, 1);
+        });
+        helper.succeedWhen(() -> {
+            String[] row = rows(PathLog.PATHS, recruit).stream().filter(r -> r[5].equals("D")).findFirst()
+                    .orElseThrow(() -> new GameTestAssertException("no detour row yet"));
+            recruit.discard();
+            if (Integer.parseInt(row[6]) > 40) {
+                throw new GameTestAssertException("the detour row's distance is " + row[6] + " tenths, measured from the recruit; the search started 3 blocks from its target");
+            }
+        });
+    }
+
     /** G3-1 and G3-3: one row per search the follower starts, each on the thread searches run on. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 320, batch = LOG_ON)
     public static void withPathLogOnEverySearchOfAFollowerHasOneRow(GameTestHelper helper) {
-        Scene scene = scene(helper, 1);
+        Scene scene = scene(helper, 1, 220);
         AbstractRecruitEntity recruit = scene.recruits.get(0);
         Set<Path> adopted = Collections.newSetFromMap(new IdentityHashMap<>());
         long[] observingFrom = {-1};
@@ -86,7 +220,8 @@ public class PathLogGameTests {
             long walkedOrNone = rows.stream().filter(r -> r[18].equals("A") || r[18].equals("N")).count();
             char thread = RecruitsServerConfig.UseAsyncPathfinding.get() ? PathLogRecord.WORKER : PathLogRecord.INLINE;
             for (String[] row : rows) {
-                if (!row[5].equals("F") || !row[4].equals("R") || row[15].charAt(0) != thread || Integer.parseInt(row[8]) <= 0) {
+                boolean nodesKnown = thread != PathLogRecord.WORKER || Integer.parseInt(row[10]) > 0;
+                if (!row[5].equals("F") || !row[4].equals("R") || row[15].charAt(0) != thread || Integer.parseInt(row[8]) <= 0 || !nodesKnown) {
                     throw new GameTestAssertException("expected a follow search by the recruit navigation on thread " + thread
                             + " with a budget: " + String.join(",", row));
                 }
@@ -105,7 +240,7 @@ public class PathLogGameTests {
     /** G3-3 with three followers: every row's thread is the one searches run on. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 220, batch = LOG_ON)
     public static void withPathLogOnThreeFollowersSearchOnTheExpectedThread(GameTestHelper helper) {
-        Scene scene = scene(helper, 3);
+        Scene scene = scene(helper, 3, Long.MAX_VALUE);
         long start = helper.getLevel().getGameTime();
         helper.runAtTickTime(200, () -> {
             removeOwner(helper, scene.owner);
@@ -128,7 +263,7 @@ public class PathLogGameTests {
     /** A follower gets a summary row every 100 ticks, counting its ticks in Follow Me and its goal's start. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 260, batch = LOG_ON)
     public static void withPathLogOnAFollowerGetsASummaryEvery100Ticks(GameTestHelper helper) {
-        Scene scene = scene(helper, 1);
+        Scene scene = scene(helper, 1, Long.MAX_VALUE);
         AbstractRecruitEntity recruit = scene.recruits.get(0);
         helper.runAtTickTime(240, () -> {
             removeOwner(helper, scene.owner);
@@ -165,7 +300,7 @@ public class PathLogGameTests {
     /** G3-2: with the setting off, as by default, nothing is written for a follower. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 220)
     public static void byDefaultNothingIsLogged(GameTestHelper helper) {
-        Scene scene = scene(helper, 1);
+        Scene scene = scene(helper, 1, Long.MAX_VALUE);
         AbstractRecruitEntity recruit = scene.recruits.get(0);
         helper.runAtTickTime(200, () -> {
             removeOwner(helper, scene.owner);
@@ -180,8 +315,11 @@ public class PathLogGameTests {
     private record Scene(ServerPlayer owner, List<AbstractRecruitEntity> recruits) {
     }
 
-    /** {@code count} followers at the corridor's west end; the owner walks x 6.5 to 13.5 and back every 60 ticks. */
-    private static Scene scene(GameTestHelper helper, int count) {
+    /**
+     * {@code count} followers at the corridor's west end; the owner walks x 6.5 to 13.5 and back
+     * every 60 ticks, and stands still from {@code stopAt} on.
+     */
+    private static Scene scene(GameTestHelper helper, int count, long stopAt) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
         daytime(helper);
@@ -189,7 +327,7 @@ public class PathLogGameTests {
         List<AbstractRecruitEntity> recruits = new ArrayList<>();
         for (int i = 0; i < count; i++) recruits.add(followingRecruit(helper, owner, 1 + i, 3, 1 + i % 3));
         helper.onEachTick(() -> {
-            double phase = (helper.getTick() % 60) / 60.0;
+            double phase = (Math.min(helper.getTick(), stopAt) % 60) / 60.0;
             double x = 6.5 + 7.0 * (phase < 0.5 ? phase * 2 : (1 - phase) * 2);
             Vec3 at = helper.absoluteVec(new Vec3(x, 3, 2.5));
             owner.setPos(at.x, at.y, at.z);

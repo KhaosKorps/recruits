@@ -48,6 +48,7 @@ public final class PathLogRecord {
     private char thread = NOT_RUN;
     private long cpuMicros = -1;
     private boolean failed;
+    private boolean handedBack;
     private final AtomicBoolean written = new AtomicBoolean();
 
     public PathLogRecord(long seq, int settingsVersion, long requestTick, String recruit, char nav, char purpose,
@@ -87,6 +88,15 @@ public final class PathLogRecord {
 
     public boolean hasFailed() {
         return this.failed;
+    }
+
+    /** The search's path has been handed back to its caller (server thread). */
+    public void handedBack() {
+        this.handedBack = true;
+    }
+
+    public boolean wasHandedBack() {
+        return this.handedBack;
     }
 
     /** Whether the search has run, found or failed. */

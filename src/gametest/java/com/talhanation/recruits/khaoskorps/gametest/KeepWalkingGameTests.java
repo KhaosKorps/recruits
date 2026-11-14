@@ -177,6 +177,79 @@ public class KeepWalkingGameTests {
         DetourGameTests.followRoundTheRavine(helper);
     }
 
+    /** Handing the walked path back once its waiting search has finished doesn't put the old path back over the new one. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 100, batch = REPEAT_ALONE)
+    public static void withKeepWalkingTheWalkedPathHandedBackDoesNotReplaceAFinishedSearch(GameTestHelper helper) {
+        if (!RecruitsServerConfig.UseAsyncPathfinding.get()) {
+            helper.succeed();
+            return;
+        }
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        AbstractRecruitEntity recruit = helper.spawn(ModEntityTypes.RECRUIT.get(), 2, 3, 2);
+        recruit.setNoAi(true);
+        recruit.setOnGround(true);
+        AsyncPathNavigation navigation = (AsyncPathNavigation) recruit.getNavigation();
+        Path walked = corridorPath(helper, 2, 9);
+        AsyncPath[] search = {null};
+        CountDownLatch release = holdTheWorkers(helper);
+        try {
+            navigation.moveTo(walked, 1.0D);
+            Path requested = navigation.createPath(helper.absolutePos(new BlockPos(13, 3, 2)), 1);
+            if (!(requested instanceof AsyncPath async) || async.isProcessed()) {
+                throw new GameTestAssertException("setup: expected a search still waiting, got " + requested);
+            }
+            search[0] = async;
+            navigation.moveTo(requested, 1.0D);
+        } finally {
+            release.countDown();
+        }
+        helper.onEachTick(() -> {
+            if (!search[0].isProcessed()) return;
+            navigation.moveTo(walked, 1.0D);
+            Path now = navigation.getPath();
+            recruit.discard();
+            if (now != search[0]) throw new GameTestAssertException("handing back the walked path replaced the finished search with " + now);
+            helper.succeed();
+        });
+    }
+
+    /**
+     * Once the walked path runs out while a search waits, the navigation holds the waiting search, as
+     * it would without the setting, so no goal sees the navigation as done meanwhile.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 40, batch = GOAL_ALONE)
+    public static void withKeepWalkingTheNavigationIsNotDoneWhileASearchWaits(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        AbstractRecruitEntity recruit = helper.spawn(ModEntityTypes.RECRUIT.get(), 2, 3, 2);
+        recruit.setNoAi(true);
+        AsyncPathNavigation navigation = (AsyncPathNavigation) recruit.getNavigation();
+        CountDownLatch release = new CountDownLatch(1);
+        boolean done;
+        try {
+            Path walked = corridorPath(helper, 2, 9);
+            navigation.moveTo(walked, 1.0D);
+            AsyncPath held = new AsyncPath(new ArrayList<>(), Set.of(helper.absolutePos(new BlockPos(13, 3, 2))), helper.getLevel(), () -> {
+                try {
+                    release.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return corridorPath(helper, 2, 13);
+            });
+            navigation.moveTo(held, 1.0D);
+            walked.setNextNodeIndex(walked.getNodeCount());
+            navigation.tick();
+            done = navigation.isDone();
+        } finally {
+            release.countDown();
+        }
+        recruit.discard();
+        if (done) throw new GameTestAssertException("with a search still running, the navigation reported done once the walked path ran out");
+        helper.succeed();
+    }
+
     /** Queues one latched job per path worker, so a search queued after them waits until the latch opens. */
     private static CountDownLatch holdTheWorkers(GameTestHelper helper) {
         CountDownLatch release = new CountDownLatch(1);

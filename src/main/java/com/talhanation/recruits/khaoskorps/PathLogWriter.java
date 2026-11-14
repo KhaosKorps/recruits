@@ -15,8 +15,10 @@ import java.util.function.Consumer;
 /**
  * Moves the path log's rows off the game's threads: rows go into a bounded queue that never makes
  * the caller wait (a row that doesn't fit is dropped and counted), and one daemon thread writes
- * them to a sink, flushing about once a second. A sink error is reported once, through
- * {@code onError}, and every row after it is dropped. Plain Java, covered by JUnit.
+ * them to a sink, flushing about once a second. A sink error, or anything else the sink throws, is
+ * reported once through {@code onError}; the rows still queued then, and every row after, are
+ * dropped and counted. Closing needn't wait: the writer finishes the queued rows, closes the sink
+ * and then runs {@code onClosed}. Plain Java, covered by JUnit.
  */
 public final class PathLogWriter {
 
@@ -39,25 +41,32 @@ public final class PathLogWriter {
     private final BlockingQueue<Object> queue;
     private final Sink sink;
     private final Consumer<IOException> onError;
+    private final Runnable onClosed;
     private final long flushNanos;
     private final AtomicLong dropped = new AtomicLong();
     private volatile long written;
     private volatile boolean failed;
+    private volatile boolean stopping;
     private final Thread thread;
 
     public PathLogWriter(Sink sink, int capacity, long flushMillis, Consumer<IOException> onError) {
+        this(sink, capacity, flushMillis, onError, () -> { });
+    }
+
+    public PathLogWriter(Sink sink, int capacity, long flushMillis, Consumer<IOException> onError, Runnable onClosed) {
         this.queue = new ArrayBlockingQueue<>(capacity + 1); // the one extra slot is kept for STOP
         this.sink = sink;
         this.onError = onError;
+        this.onClosed = onClosed;
         this.flushNanos = TimeUnit.MILLISECONDS.toNanos(flushMillis);
         this.thread = new Thread(this::run, "recruits-path-log");
         this.thread.setDaemon(true);
         this.thread.start();
     }
 
-    /** Queues a row without waiting; false, and counted as dropped, if the queue is full or the sink failed. */
+    /** Queues a row without waiting; false, and counted as dropped, if the queue is full, the sink failed or closing began. */
     public boolean offer(int file, String row) {
-        if (this.failed || this.queue.remainingCapacity() <= 1 || !this.queue.offer(new Row(file, row))) {
+        if (this.failed || this.stopping || this.queue.remainingCapacity() <= 1 || !this.queue.offer(new Row(file, row))) {
             this.dropped.incrementAndGet();
             return false;
         }
@@ -77,17 +86,19 @@ public final class PathLogWriter {
     }
 
     /**
-     * Writes every row queued before this call, then closes the sink; waits up to {@code waitMillis}
-     * for that, after which the writer thread is interrupted.
+     * Stops taking rows; the writer writes those already queued, closes the sink and runs onClosed.
+     * Waits up to {@code waitMillis} for that (0: doesn't wait). Never interrupts the writer, so a
+     * slow disk can't turn a close into a write error.
      */
     public void close(long waitMillis) {
-        if (!this.queue.offer(STOP)) this.thread.interrupt();
+        this.stopping = true;
+        this.queue.offer(STOP); // wakes the writer at once; without it, it notices within a flush interval
+        if (waitMillis <= 0) return;
         try {
             this.thread.join(waitMillis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        if (this.thread.isAlive()) this.thread.interrupt();
     }
 
     private void run() {
@@ -95,11 +106,14 @@ public final class PathLogWriter {
         try {
             while (true) {
                 Object next = this.queue.poll(this.flushNanos, TimeUnit.NANOSECONDS);
-                if (next == STOP) break;
-                if (next instanceof Row row) {
-                    this.sink.write(row.file(), row.text());
-                    this.written++;
+                if (next == STOP || (next == null && this.stopping)) {
+                    Object rest;
+                    while ((rest = this.queue.poll()) != null) {
+                        if (rest instanceof Row row) this.write(row);
+                    }
+                    break;
                 }
+                if (next instanceof Row row) this.write(row);
                 if (System.nanoTime() - lastFlush >= this.flushNanos) {
                     this.sink.flush();
                     lastFlush = System.nanoTime();
@@ -108,6 +122,8 @@ public final class PathLogWriter {
             this.sink.flush();
         } catch (IOException e) {
             this.fail(e);
+        } catch (RuntimeException e) {
+            this.fail(new IOException("the path log's sink failed", e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
@@ -115,14 +131,25 @@ public final class PathLogWriter {
                 this.sink.close();
             } catch (IOException e) {
                 this.fail(e);
+            } catch (RuntimeException e) {
+                this.fail(new IOException("the path log's sink failed to close", e));
             }
+            this.onClosed.run();
         }
+    }
+
+    private void write(Row row) throws IOException {
+        this.sink.write(row.file(), row.text());
+        this.written++;
     }
 
     private void fail(IOException e) {
         if (this.failed) return;
         this.failed = true;
-        this.queue.clear();
+        Object left;
+        while ((left = this.queue.poll()) != null) {
+            if (left instanceof Row) this.dropped.incrementAndGet();
+        }
         this.onError.accept(e);
     }
 

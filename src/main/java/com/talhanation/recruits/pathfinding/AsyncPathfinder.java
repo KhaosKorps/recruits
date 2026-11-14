@@ -170,7 +170,7 @@ public class AsyncPathfinder extends PathFinder {
 
         // petal - ignore this warning, we know that the above loop always runs at least once since positions is not empty
         //noinspection ConstantConditions
-        PathLog.nodes(i); // KhaosKorps fork
+        PathLog.nodes(i >= j ? i - 1 : i); // KhaosKorps fork: when the budget ends the loop, i was counted before a node was taken
         return best;
         // Paper end
         // petal end

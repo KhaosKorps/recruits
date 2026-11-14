@@ -213,6 +213,81 @@ public class DetourGameTests {
         });
     }
 
+    private static final String SLOW_START_CHECK = "khaoskorps_detour_start_check_100";
+
+    @net.minecraft.gametest.framework.BeforeBatch(batch = SLOW_START_CHECK)
+    public static void slowStartCheck(net.minecraft.server.level.ServerLevel level) {
+        forkSettings(() -> com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.FollowStartCheckTicks.set(100));
+    }
+
+    @net.minecraft.gametest.framework.AfterBatch(batch = SLOW_START_CHECK)
+    public static void afterSlowStartCheck(net.minecraft.server.level.ServerLevel level) {
+        resetForkSettings();
+    }
+
+    /**
+     * With the follow goal checking whether to start only every 100 ticks, a stuck recruit's goal
+     * stops and starts about 100 ticks apart; it still notices it is stuck, gets a plan and goes round.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 2400, batch = SLOW_START_CHECK)
+    public static void withAStartCheckOf100TicksAFollowingRecruitStillGoesRoundTheRavine(GameTestHelper helper) {
+        followRoundTheRavine(helper);
+    }
+
+    /**
+     * A recruit paused for 4 seconds partway along a route (held in place, then told to follow
+     * again) takes the route up where it was, not from its first waypoint.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 1400)
+    public static void aRecruitPausedPartwayAlongARouteResumesWhereItWas(GameTestHelper helper) {
+        ravineArena(helper);
+        ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
+        pin(helper, owner, 24.5, 5, 33.5);
+        standing(helper, owner);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 24, 5, 12);
+        DetourFollow detour = detourOf(recruit);
+        int[] pausedAt = {-1};
+        long[] resumeAt = {-1};
+        helper.onEachTick(() -> {
+            if (relative(helper, recruit).y < 4.99) {
+                throw new GameTestAssertException("the recruit fell into the ravine: at " + describe(helper, recruit));
+            }
+            long tick = helper.getTick();
+            int next = (Integer) getField(detour, "next");
+            Object walking = getField(detour, "walking");
+            if (pausedAt[0] < 0) {
+                if (walking != null && next >= 2) {
+                    pausedAt[0] = next;
+                    recruit.setFollowState(2);
+                    resumeAt[0] = tick + 80;
+                }
+                return;
+            }
+            if (tick == resumeAt[0]) recruit.setFollowState(1);
+            if (tick > resumeAt[0] && walking != null && next < pausedAt[0]) {
+                throw new GameTestAssertException("after the pause the recruit went back to waypoint " + next
+                        + " of its route; it had reached waypoint " + pausedAt[0]);
+            }
+        });
+        helper.succeedWhen(() -> {
+            if (resumeAt[0] < 0 || helper.getTick() <= resumeAt[0] || recruit.distanceToSqr(owner) > 3.5 * 3.5) {
+                throw new GameTestAssertException("at tick " + helper.getTick() + " the recruit is at " + describe(helper, recruit)
+                        + (pausedAt[0] < 0 ? ", not yet paused" : ", paused at waypoint " + pausedAt[0]));
+            }
+            removeOwner(helper, owner);
+        });
+    }
+
+    private static Object getField(Object target, String name) {
+        try {
+            java.lang.reflect.Field field = target.getClass().getDeclaredField(name);
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (ReflectiveOperationException e) {
+            throw new GameTestAssertException("setup: can't read " + name + ": " + e);
+        }
+    }
+
     private static DetourFollow detourOf(AbstractRecruitEntity recruit) {
         for (WrappedGoal wrapped : recruit.goalSelector.getAvailableGoals()) {
             if (wrapped.getGoal() instanceof RecruitFollowOwnerGoal goal) {

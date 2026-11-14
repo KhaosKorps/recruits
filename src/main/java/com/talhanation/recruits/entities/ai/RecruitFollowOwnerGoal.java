@@ -75,7 +75,7 @@ public class RecruitFollowOwnerGoal extends Goal {
     public void start() {
         this.timeToRecalcPath = 0;
         this.staggerFirstReplan = FollowSettings.current().staggerFollowRepaths(); // KhaosKorps fork
-        this.detour.started(this.recruit.getCommandSenderWorld().getGameTime()); // KhaosKorps fork
+        this.detour.started(this.recruit.getCommandSenderWorld().getGameTime(), FollowSettings.current()); // KhaosKorps fork
         PathLog.followGoalStarted(this.recruit); // KhaosKorps fork
         this.recruit.setIsFollowing(true);
     }
@@ -123,10 +123,10 @@ public class RecruitFollowOwnerGoal extends Goal {
                 this.detour.notePath(asyncNavigation.latestPath());
                 BlockPos waypoint = this.detour.waypoint(this.recruit, this.owner, settings);
                 if (waypoint != null) {
-                    PathLog.purpose(this.recruit, PathLogRecord.WAYPOINT);
+                    PathLog.purpose(this.recruit, PathLogRecord.WAYPOINT); // KhaosKorps fork: PathLog
                     asyncNavigation.moveTo(asyncNavigation.createPath(waypoint, 1), settings.followSpeed());
                 } else {
-                    PathLog.purpose(this.recruit, PathLogRecord.FOLLOW);
+                    PathLog.purpose(this.recruit, PathLogRecord.FOLLOW); // KhaosKorps fork: PathLog
                     asyncNavigation.moveTo(this.owner, settings.followSpeed(), settings.followMaxPathLength());
                 }
             } else {

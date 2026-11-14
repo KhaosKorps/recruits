@@ -111,7 +111,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     protected Path createPath(Set<BlockPos> p_148223_, int p_148224_, boolean p_148225_, int p_148226_, float p_148227_) {
         if(Thread.currentThread().getThreadGroup() != SidedThreadGroups.SERVER) return null;
         this.takePendingIfFinished(); // KhaosKorps fork: so the checks below see the newest path
-        char purpose = PathLog.takePurpose(this.mob); // KhaosKorps fork: PathLog, what the caller asked this search for
+        char purpose = PathLog.takePurpose(this); // KhaosKorps fork: PathLog, what the caller asked this search for
         if (p_148223_.isEmpty()) {
             return null;
         } else if (this.mob.getY() < (double) this.level.getMinBuildHeight()) {
@@ -154,7 +154,10 @@ public abstract class AsyncPathNavigation extends PathNavigation {
                         this.resetStuckTimeout();
                     }
                 });
+            } else if (logged != null && path instanceof AsyncPath) { // KhaosKorps fork: PathLog, a navigation built for async searches after the setting was turned off
+                AsyncPathProcessor.awaitProcessing(path, this.level.getServer(), processedPath -> PathLog.arrived(logged, processedPath, false, this.level.getGameTime()));
             }
+            PathLog.handedBack(logged); // KhaosKorps fork
             return path;
         }
     }
@@ -180,16 +183,19 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     }
 
     /**
-     * KhaosKorps fork: KeepWalkingWhileRepathing: a waiting path whose search has finished takes over,
-     * trimmed as moveTo trims. Called from tick, createPath and moveTo, so whichever comes first after
-     * the search finishes sees the new path.
+     * KhaosKorps fork: KeepWalkingWhileRepathing: a waiting path takes over once its search has
+     * finished, trimmed as moveTo trims; or, still unfinished, once the walked path has run out, which
+     * leaves the navigation as it would be without the setting, holding a search not yet done. Called
+     * from tick (before and after walking), createPath and moveTo. Returns whether it took over.
      */
-    private void takePendingIfFinished() {
-        if (this.pendingPath instanceof AsyncPath pending && pending.isProcessed()) {
-            this.path = pending;
-            this.pendingPath = null;
-            this.trimPath();
-        }
+    private boolean takePendingIfFinished() {
+        if (this.pendingPath == null) return false;
+        boolean finished = this.pendingPath instanceof AsyncPath pending && pending.isProcessed();
+        if (!finished && this.path != null && !this.path.isDone()) return false;
+        this.path = this.pendingPath;
+        this.pendingPath = null;
+        if (finished) this.trimPath();
+        return true;
     }
 
     /** KhaosKorps fork: the newest path asked for: the one still being searched while the old one is walked, else the walked one. */
@@ -261,7 +267,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         long currentTick = this.level.getGameTime();
         // Paper start - Pathfinding optimizations
         if (this.pathfindFailures > 10 && this.path == null && currentTick < this.lastFailure + 40) {
-            PathLog.gaveUp(this.mob); // KhaosKorps fork
+            PathLog.gaveUp(this.mob, this); // KhaosKorps fork
             return false;
         }
         // Paper end
@@ -287,7 +293,8 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             this.pendingPath = null; // KhaosKorps fork
             return false;
         }
-        this.takePendingIfFinished(); // KhaosKorps fork
+        Path walkedBefore = this.path; // KhaosKorps fork: the walked path handed back doesn't undo a search that has just finished
+        if (this.takePendingIfFinished() && p_26537_ == walkedBefore) p_26537_ = this.path; // KhaosKorps fork
         // KhaosKorps fork: KeepWalkingWhileRepathing: while the new path is still searched, keep walking the old one.
         if (p_26537_ instanceof AsyncPath incoming && !incoming.isProcessed() && p_26537_ != this.path
                 && FollowSettings.current().keepWalkingWhileRepathing() && this.isWalkingAFinishedPath()) {
@@ -367,6 +374,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
                 this.mob.getMoveControl().setWantedPosition(vec32.x, this.getGroundY(vec32), vec32.z, this.speedModifier * this.edgeSpeedFactor()); // KhaosKorps fork: careful steps
             }
         }
+        this.takePendingIfFinished(); // KhaosKorps fork: if the walked path ran out this tick, a waiting search takes its place now
     }
 
     /**

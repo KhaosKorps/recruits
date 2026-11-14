@@ -444,6 +444,12 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
                         blockpathtypes = this.getCachedBlockType(this.mob, p_164726_, p_164727_, p_164728_);
                         f = this.mob.getPathfindingMalus(blockpathtypes);
                         if (blockpathtypes != BlockPathTypes.OPEN && f >= 0.0F) {
+                            // KhaosKorps fork: with edge care on, a drop of two or more blocks may not land beside a
+                            // dangerous drop, such as a lone block below a cliff, where a mob slides off or is trapped.
+                            if (j >= 2 && this.edgeMargin > 0 && EdgeProbe.distanceToDangerousDrop(this.level,
+                                    p_164726_, p_164727_, p_164728_, this.edgeMaxFall, 1, this.edgeDropColumns) == 1) {
+                                return null;
+                            }
                             node = this.getNodeAndUpdateCostToMax(p_164726_, p_164727_, p_164728_, blockpathtypes, f);
                             break;
                         }

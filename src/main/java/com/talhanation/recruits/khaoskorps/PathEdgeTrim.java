@@ -41,12 +41,13 @@ public final class PathEdgeTrim {
     }
 
     /**
-     * How many of the path's points to keep so it doesn't end at an edge near its target, whether
-     * or not it reaches the target. Walking back from the end, through the points within
-     * {@code nearTarget} blocks of the target, the path is cut at the first one with no dangerous
-     * drop within {@code keepBack} + 1 blocks, so the mob rests on safe ground near its owner.
-     * When no point that near is safe, nothing is cut: the ground around the owner is all edge, as
-     * at the end of a cliff trail, and cutting would only stop the mob somewhere just as exposed.
+     * How many of the path's points to keep so it doesn't end closer to an edge than it must, near
+     * its target, whether or not it reaches the target. Among the points within {@code nearTarget}
+     * blocks of the target, counting the first one, where the mob stands, the path ends at the one
+     * furthest from a dangerous drop (any with none within {@code keepBack} + 1 blocks counts as
+     * furthest), and of equals, the one nearest the end. So the mob never walks somewhere nearer a
+     * drop than the safest point it has, even when it already stands inside the margin, as after
+     * coasting past a cut path's end; and on a cliff trail, all edge, it still follows to the end.
      */
     public static int pointsToKeepNearTarget(BlockGetter level, Path path, int maxFall, int keepBack, int nearTarget) {
         int count = path.getNodeCount();
@@ -54,16 +55,22 @@ public final class PathEdgeTrim {
         BlockPos target = path.getTarget();
         long nearSqr = (long) nearTarget * nearTarget;
         int clearance = keepBack + 1;
+        int best = -1;
+        int bestClearance = -1;
         for (int i = count - 1; i >= 0; i--) {
             Node node = path.getNode(i);
             long dx = node.x - target.getX();
             long dz = node.z - target.getZ();
-            if (dx * dx + dz * dz > nearSqr) return count;
-            if (EdgeProbe.distanceToDangerousDrop(level, node.x, node.y, node.z, maxFall, clearance, null) == EdgeProbe.NONE) {
-                return i + 1;
+            if (dx * dx + dz * dz > nearSqr) break;
+            int distance = EdgeProbe.distanceToDangerousDrop(level, node.x, node.y, node.z, maxFall, clearance, null);
+            int clear = distance == EdgeProbe.NONE ? clearance + 1 : distance;
+            if (clear > bestClearance) {
+                best = i;
+                bestClearance = clear;
             }
+            if (distance == EdgeProbe.NONE) break;
         }
-        return count;
+        return best < 0 ? count : best + 1;
     }
 
     /** Whether either of the two columns from {@code end} toward {@code target} is a dangerous drop. */

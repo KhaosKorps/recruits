@@ -259,6 +259,131 @@ public class EdgeSafetyGameTests {
     }
 
     /**
+     * Near the owner, a path ends at its point furthest from a drop, counting where the mob stands:
+     * a path along the rim of the wide arena whose points lie 3, 3, 2, 2, 1 and 1 blocks from the
+     * drop keeps its first two, so a mob already inside the margin goes no nearer the edge.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
+    public static void nearTheOwnerAPathEndsAtItsPointFurthestFromTheDrop(GameTestHelper helper) {
+        rimWithGroundBehind(helper);
+        int[][] points = {{8, 6}, {8, 5}, {9, 4}, {9, 3}, {10, 2}, {10, 1}};
+        java.util.List<net.minecraft.world.level.pathfinder.Node> nodes = new java.util.ArrayList<>();
+        for (int[] point : points) {
+            BlockPos at = helper.absolutePos(new BlockPos(point[0], 5, point[1]));
+            nodes.add(new net.minecraft.world.level.pathfinder.Node(at.getX(), at.getY(), at.getZ()));
+        }
+        net.minecraft.world.level.pathfinder.Path path = new net.minecraft.world.level.pathfinder.Path(
+                nodes, helper.absolutePos(new BlockPos(10, 5, 1)), true);
+        int keep = com.talhanation.recruits.khaoskorps.PathEdgeTrim.pointsToKeepNearTarget(helper.getLevel(), path, 1, 2, 6);
+        if (keep != 2) {
+            throw new GameTestAssertException("the path along the rim keeps " + keep + " of its 6 points; it should keep the 2 that lie 3 blocks from the drop");
+        }
+        helper.succeed();
+    }
+
+    private static final String PERCH = "khaoskorps_perch_fall_3";
+    private static final String PERCH_EDGE_CARE_OFF = "khaoskorps_perch_fall_3_edge_care_off";
+
+    @BeforeBatch(batch = PERCH)
+    public static void perchFallThree(ServerLevel level) {
+        forkSettings(() -> KhaosKorpsServerConfig.MaxFallDistance.set(3));
+    }
+
+    @AfterBatch(batch = PERCH)
+    public static void afterPerchFallThree(ServerLevel level) {
+        resetForkSettings();
+    }
+
+    @BeforeBatch(batch = PERCH_EDGE_CARE_OFF)
+    public static void perchFallThreeEdgeCareOff(ServerLevel level) {
+        forkSettings(() -> {
+            KhaosKorpsServerConfig.MaxFallDistance.set(3);
+            KhaosKorpsServerConfig.EdgeMargin.set(false);
+            KhaosKorpsServerConfig.WaitWhenOwnerUnreachable.set(false);
+        });
+    }
+
+    @AfterBatch(batch = PERCH_EDGE_CARE_OFF)
+    public static void afterPerchFallThreeEdgeCareOff(ServerLevel level) {
+        resetForkSettings();
+    }
+
+    /**
+     * A cliff top at stand height 7 (x = 1..5) with a lone block below its edge: a single column at
+     * (6, z = 2) to stand height 4, three blocks down, with drops of four or more to the floor all
+     * round it. Everything else beyond the cliff is open to the floor.
+     */
+    private static void cliffWithALoneBlockBelow(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, 5, 7);
+        for (int y = 0; y < 4; y++) helper.setBlock(6, y, 2, Blocks.STONE);
+        daytime(helper);
+    }
+
+    /** At fall distance 3 with edge care on, no path drops from the cliff top onto the lone block. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 60, batch = PERCH)
+    public static void noPathDropsOntoALoneBlockBelowACliff(GameTestHelper helper) {
+        searchFromTheCliffToTheLoneBlock(helper, path -> {
+            if (path.canReach()) {
+                throw new GameTestAssertException("a path drops onto the lone block below the cliff: " + pathPoints(helper, path));
+            }
+        });
+    }
+
+    /** With edge care off, as in 1.15.2, at fall distance 3 the path drops onto the lone block. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 60, batch = PERCH_EDGE_CARE_OFF)
+    public static void withEdgeCareOffAPathDropsOntoALoneBlockBelowACliff(GameTestHelper helper) {
+        searchFromTheCliffToTheLoneBlock(helper, path -> {
+            if (!path.canReach()) {
+                throw new GameTestAssertException("with edge care off the path doesn't reach the lone block: " + pathPoints(helper, path));
+            }
+        });
+    }
+
+    private static void searchFromTheCliffToTheLoneBlock(GameTestHelper helper,
+                                                         java.util.function.Consumer<net.minecraft.world.level.pathfinder.Path> check) {
+        cliffWithALoneBlockBelow(helper);
+        AbstractRecruitEntity recruit = helper.spawn(com.talhanation.recruits.init.ModEntityTypes.RECRUIT.get(), 2, 7, 2);
+        recruit.setAggroState(3);
+        net.minecraft.world.level.pathfinder.Path[] path = {null};
+        helper.runAfterDelay(1, () -> {
+            path[0] = com.talhanation.recruits.khaoskorps.DetourSearch.find(helper.getLevel(), recruit,
+                    helper.absolutePos(new BlockPos(5, 7, 2)), helper.absolutePos(new BlockPos(6, 4, 2)), 8, 0);
+            if (path[0] == null) throw new GameTestAssertException("the search couldn't start on the cliff top");
+        });
+        helper.onEachTick(() -> {
+            if (path[0] == null || (path[0] instanceof com.talhanation.recruits.pathfinding.AsyncPath async && !async.isProcessed())) return;
+            check.accept(path[0]);
+            recruit.discard();
+            helper.succeed();
+        });
+    }
+
+    /**
+     * The user's case: an owner standing on the lone block, and a recruit following closely, already
+     * inside the margin on the cliff top. At fall distance 3 with the defaults, it stays on top.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 220, batch = PERCH)
+    public static void aRecruitDoesNotFollowItsOwnerDownOntoALoneBlock(GameTestHelper helper) {
+        cliffWithALoneBlockBelow(helper);
+        ServerPlayer owner = owner(helper, 6.5, 4, 2.5);
+        pin(helper, owner, 6.5, 4, 2.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 4, 7, 2);
+
+        helper.runAfterDelay(1, () -> assertFollowPreconditions(recruit));
+        helper.onEachTick(() -> {
+            if (relative(helper, recruit).y < 6.99) {
+                throw new GameTestAssertException("the recruit left the cliff top for the lone block or the drop: at "
+                        + describe(helper, recruit) + "; " + navigationState(helper, recruit));
+            }
+        });
+        helper.runAtTickTime(200, () -> {
+            removeOwner(helper, owner);
+            helper.succeed();
+        });
+    }
+
+    /**
      * The cliff trail: flat ground at stand height 5, with a five-deep ditch in lanes z = 2 and 3
      * for x = 3..10, so lane z = 1 along it is a one-block trail beside a drop. The ditch ends
      * four blocks short of the owner's spot at x = 14, so the owner doesn't stand at an edge.

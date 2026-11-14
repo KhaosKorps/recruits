@@ -31,7 +31,7 @@ import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 public class EdgeCostGameTests {
 
     private static final String T = HarnessGameTests.EMPTY_TEMPLATE;
-    private static final String EDGE_CARE_OFF = "khaoskorps_edge_care_off";
+    private static final String EDGE_CARE_OFF = EDGE_CARE_OFF_BATCH;
 
     @BeforeBatch(batch = EDGE_CARE_OFF)
     public static void edgeCareOff(ServerLevel level) {

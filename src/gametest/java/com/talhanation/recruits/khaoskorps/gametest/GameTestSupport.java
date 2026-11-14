@@ -7,7 +7,10 @@ import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.init.ModEntityTypes;
 import com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig;
 import com.talhanation.recruits.pathfinding.AsyncPath;
+import com.electronwill.nightconfig.core.file.FileWatcher;
 import net.minecraftforge.common.ForgeConfigSpec;
+import net.minecraftforge.fml.config.ConfigTracker;
+import net.minecraftforge.fml.config.ModConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -136,14 +139,18 @@ public final class GameTestSupport {
         helper.getLevel().removePlayerImmediately(owner, Entity.RemovalReason.DISCARDED);
     }
 
-    /** A plain recruit owned by the owner, in Follow Me. */
+    /**
+     * A plain recruit owned by the owner, in Follow Me, and passive. A recruit in any other stance
+     * looks for monsters up to 40 blocks away, through walls, and one in another test's area or the
+     * world around would pull it off the behaviour under test.
+     */
     public static AbstractRecruitEntity followingRecruit(GameTestHelper helper, ServerPlayer owner, int x, int y, int z) {
         AbstractRecruitEntity recruit = helper.spawn(ModEntityTypes.RECRUIT.get(), x, y, z);
         recruit.setOwnerUUID(Optional.of(owner.getUUID()));
         recruit.setIsOwned(true);
         recruit.setListen(true);
         recruit.setFollowState(1);
-        recruit.setTarget(null);
+        recruit.setAggroState(3);
         return recruit;
     }
 
@@ -153,6 +160,7 @@ public final class GameTestSupport {
      * The settings are found by reflection, so one added later can't be left out.
      */
     public static void resetForkSettings() {
+        stopReloadingForkSettingsFile();
         for (Field field : KhaosKorpsServerConfig.class.getFields()) {
             if (!Modifier.isStatic(field.getModifiers())
                     || !ForgeConfigSpec.ConfigValue.class.isAssignableFrom(field.getType())) continue;
@@ -172,12 +180,33 @@ public final class GameTestSupport {
         KhaosKorpsServerConfig.republish();
     }
 
+    private static boolean forkSettingsFileUnwatched;
+
+    /**
+     * Stops Forge reloading the fork's settings file while GameTests run. Settings batches write
+     * the file many times, and Forge reloads it from disk on its own thread whenever it notices a
+     * change. A reload that reads an earlier state brings back values a batch had just replaced:
+     * seen as a 1.15.2 baseline test running at another batch's fall distance.
+     */
+    private static void stopReloadingForkSettingsFile() {
+        if (forkSettingsFileUnwatched) return;
+        ModConfig config = ConfigTracker.INSTANCE.fileMap().get(KhaosKorpsServerConfig.FILE_NAME);
+        if (config == null) {
+            throw new IllegalStateException("the fork's settings file " + KhaosKorpsServerConfig.FILE_NAME + " isn't loaded");
+        }
+        FileWatcher.defaultInstance().removeWatch(config.getFullPath());
+        forkSettingsFileUnwatched = true;
+    }
+
     private static <T> void resetToDefault(ForgeConfigSpec.ConfigValue<T> value) {
         value.set(value.getDefault());
     }
 
     /** The batch a @GameTest joins when it names none. */
     public static final String DEFAULT_BATCH = "defaultBatch";
+
+    /** A batch with EdgeMargin and WaitWhenOwnerUnreachable off, as in 1.15.2. Its batch functions are in EdgeCostGameTests. */
+    public static final String EDGE_CARE_OFF_BATCH = "khaoskorps_edge_care_off";
 
     /**
      * {@code count} copies of a test in the default batch, for a result that depends on timing.
@@ -187,9 +216,15 @@ public final class GameTestSupport {
      */
     public static List<TestFunction> copies(String testName, int count, int timeoutTicks, boolean required,
                                             Consumer<GameTestHelper> test) {
+        return copies(DEFAULT_BATCH, testName, count, timeoutTicks, required, test);
+    }
+
+    /** {@link #copies(String, int, int, boolean, Consumer)} in a named batch. */
+    public static List<TestFunction> copies(String batch, String testName, int count, int timeoutTicks, boolean required,
+                                            Consumer<GameTestHelper> test) {
         List<TestFunction> copies = new ArrayList<>();
         for (int i = 1; i <= count; i++) {
-            copies.add(new TestFunction(DEFAULT_BATCH, testName + "_" + i,
+            copies.add(new TestFunction(batch, testName + "_" + i,
                     Main.MOD_ID + ":" + HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks, 0L, required, test));
         }
         return copies;
@@ -212,7 +247,7 @@ public final class GameTestSupport {
         require(!recruit.needsToGetFood(), "the recruit doesn't need to fetch food");
         require(!recruit.getShouldMount(), "the recruit isn't mounting");
         require(!recruit.getShouldMovePos(), "the recruit isn't moving to a position");
-        require(recruit.getTarget() == null, "the recruit has no target");
+        require(recruit.getTarget() == null, "the recruit has no target (it has " + targetOf(recruit) + ")");
     }
 
     /**
@@ -266,9 +301,19 @@ public final class GameTestSupport {
                 + path.getNodeCount() + (path.isDone() ? ", done" : "") + (path.canReach() ? "" : ", partial");
         String others = helper.getLevel().getEntities(recruit, recruit.getBoundingBox().inflate(2.0)).stream()
                 .map(e -> e.getClass().getSimpleName() + " at " + describe(helper, e)).toList().toString();
-        return route + "; on ground " + recruit.onGround() + ", motion " + String.format("(%.3f, %.3f, %.3f)",
+        BlockPos under = recruit.getOnPos();
+        return route + "; standing on " + helper.getLevel().getBlockState(under).getBlock().getName().getString()
+                + " at " + relativeBlock(helper, under) + "; on ground " + recruit.onGround() + ", motion " + String.format("(%.3f, %.3f, %.3f)",
                 recruit.getDeltaMovement().x, recruit.getDeltaMovement().y, recruit.getDeltaMovement().z)
-                + "; nearby " + others;
+                + "; target " + targetOf(recruit) + "; nearby " + others;
+    }
+
+    /** The recruit's attack target and where it is, for failure messages. */
+    private static String targetOf(AbstractRecruitEntity recruit) {
+        Entity target = recruit.getTarget();
+        if (target == null) return "none";
+        return target.getClass().getSimpleName() + " " + String.format("%.1f", Math.sqrt(recruit.distanceToSqr(target)))
+                + " blocks away at " + target.blockPosition();
     }
 
     private static String relativeBlock(GameTestHelper helper, BlockPos pos) {

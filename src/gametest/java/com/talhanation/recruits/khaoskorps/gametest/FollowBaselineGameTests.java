@@ -216,7 +216,8 @@ public class FollowBaselineGameTests {
             assertPathRoute(recruit);
             if (relative(helper, recruit).y < 2.99) {
                 throw new GameTestAssertException("at fall distance " + fallDistance
-                        + " the recruit entered the pit: at " + describe(helper, recruit));
+                        + " the recruit entered the pit: at " + describe(helper, recruit)
+                        + ", using fall distance " + recruit.getMaxFallDistance());
             }
         });
         helper.runAtTickTime(checkAtTick, () -> {

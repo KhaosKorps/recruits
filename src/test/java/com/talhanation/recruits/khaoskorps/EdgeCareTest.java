@@ -24,6 +24,17 @@ class EdgeCareTest {
         assertEquals(1.0, EdgeCare.forFollowing(withEdgeMargin(false)).carefulSpeed(), 0.0);
     }
 
+    @Test
+    void byDefaultAPathEndIsKeptBackFromADropWithinSixBlocksOfTheOwner() {
+        // The 2-block margin, a block for the coast, and the 2.65-block stop distance rounded up.
+        assertEquals(6, EdgeCare.forFollowing(FollowSettings.DEFAULTS).nearOwnerBlocks());
+    }
+
+    @Test
+    void withEdgeMarginOffAPathEndNearTheOwnerIsKept() {
+        assertEquals(0, EdgeCare.forFollowing(withEdgeMargin(false)).nearOwnerBlocks());
+    }
+
     private static FollowSettings withEdgeMargin(boolean on) {
         FollowSettings d = FollowSettings.DEFAULTS;
         return new FollowSettings(d.maxFallDistance(), d.mountedMaxFallDistance(),

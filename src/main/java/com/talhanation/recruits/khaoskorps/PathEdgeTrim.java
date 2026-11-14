@@ -40,6 +40,32 @@ public final class PathEdgeTrim {
         return 0;
     }
 
+    /**
+     * How many of the path's points to keep so it doesn't end at an edge near its target, whether
+     * or not it reaches the target. Walking back from the end, through the points within
+     * {@code nearTarget} blocks of the target, the path is cut at the first one with no dangerous
+     * drop within {@code keepBack} + 1 blocks, so the mob rests on safe ground near its owner.
+     * When no point that near is safe, nothing is cut: the ground around the owner is all edge, as
+     * at the end of a cliff trail, and cutting would only stop the mob somewhere just as exposed.
+     */
+    public static int pointsToKeepNearTarget(BlockGetter level, Path path, int maxFall, int keepBack, int nearTarget) {
+        int count = path.getNodeCount();
+        if (count == 0 || keepBack <= 0 || nearTarget <= 0) return count;
+        BlockPos target = path.getTarget();
+        long nearSqr = (long) nearTarget * nearTarget;
+        int clearance = keepBack + 1;
+        for (int i = count - 1; i >= 0; i--) {
+            Node node = path.getNode(i);
+            long dx = node.x - target.getX();
+            long dz = node.z - target.getZ();
+            if (dx * dx + dz * dz > nearSqr) return count;
+            if (EdgeProbe.distanceToDangerousDrop(level, node.x, node.y, node.z, maxFall, clearance, null) == EdgeProbe.NONE) {
+                return i + 1;
+            }
+        }
+        return count;
+    }
+
     /** Whether either of the two columns from {@code end} toward {@code target} is a dangerous drop. */
     static boolean dropAhead(BlockGetter level, Node end, BlockPos target, int maxFall) {
         int stepX = Integer.signum(target.getX() - end.x);

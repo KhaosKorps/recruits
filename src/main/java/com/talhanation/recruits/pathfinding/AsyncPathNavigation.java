@@ -176,16 +176,23 @@ public abstract class AsyncPathNavigation extends PathNavigation {
 
     /**
      * KhaosKorps fork: applies the edge care the first time a path is seen finished, which covers
-     * sync paths and async ones alike. A path that can't reach its target past a dangerous drop is
-     * cut back, so the mob waits short of the rim (PathEdgeTrim).
+     * sync paths and async ones alike (PathEdgeTrim). A path that can't reach its target past a
+     * dangerous drop is cut back, so the mob waits short of the rim; and a path's end near its target
+     * is kept back from a drop, so the mob doesn't stop at the rim its owner stands at.
      */
     private void applyEdgeCare() {
         if (this.path == null || this.path == this.edgeCareAppliedTo || this.edgeCare == null) return;
         this.edgeCareAppliedTo = this.path;
+        int maxFall = this.mob.getMaxFallDistance();
+        int keep = this.path.getNodeCount();
         if (this.edgeCare.trimUnreachable()) {
-            int keep = PathEdgeTrim.pointsToKeep(this.level, this.path, this.mob.getMaxFallDistance(), this.edgeCare.keepBackBlocks());
-            if (keep < this.path.getNodeCount()) this.path.truncateNodes(keep);
+            keep = PathEdgeTrim.pointsToKeep(this.level, this.path, maxFall, this.edgeCare.keepBackBlocks());
         }
+        if (keep == this.path.getNodeCount() && this.edgeCare.nearOwnerBlocks() > 0) {
+            keep = PathEdgeTrim.pointsToKeepNearTarget(this.level, this.path, maxFall,
+                    this.edgeCare.keepBackBlocks(), this.edgeCare.nearOwnerBlocks());
+        }
+        if (keep < this.path.getNodeCount()) this.path.truncateNodes(keep);
     }
 
     // Paper start - optimise pathfinding

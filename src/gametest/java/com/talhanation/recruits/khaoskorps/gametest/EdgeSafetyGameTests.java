@@ -3,6 +3,7 @@ package com.talhanation.recruits.khaoskorps.gametest;
 import com.talhanation.recruits.Main;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.AfterBatch;
 import net.minecraft.gametest.framework.BeforeBatch;
 import net.minecraft.gametest.framework.GameTest;
@@ -186,13 +187,86 @@ public class EdgeSafetyGameTests {
     }
 
     /**
+     * A wide arena with safe ground behind a rim: barrier walls around x = 0..15, z = 0..8, ground at
+     * stand height 5 for x = 1..10, and a five-deep drop for x = 11..14 across the arena's width.
+     * The owner stands at the rim, at (10.5, 5, 6.5); the recruit starts inland at (2, 5, 2).
+     */
+    private static void rimWithGroundBehind(GameTestHelper helper) {
+        for (int y = 0; y <= WALL_TOP; y++) {
+            for (int x = 0; x <= 15; x++) {
+                helper.setBlock(x, y, 0, Blocks.BARRIER);
+                helper.setBlock(x, y, 8, Blocks.BARRIER);
+            }
+            for (int z = 1; z <= 7; z++) {
+                helper.setBlock(0, y, z, Blocks.BARRIER);
+                helper.setBlock(15, y, z, Blocks.BARRIER);
+            }
+        }
+        for (int x = 1; x <= 10; x++) {
+            for (int z = 1; z <= 7; z++) {
+                for (int y = 0; y < 5; y++) helper.setBlock(x, y, z, Blocks.STONE);
+            }
+        }
+        daytime(helper);
+    }
+
+    /**
+     * Follows the owner at the rim, and hands the first follow path to {@code check} once the recruit
+     * is walking it, when the navigation has applied its edge care: its end point, relative to the
+     * template, and that point's distance to the nearest drop deeper than the fall distance.
+     */
+    private static void followToTheRim(GameTestHelper helper, java.util.function.BiConsumer<BlockPos, Integer> check) {
+        rimWithGroundBehind(helper);
+        ServerPlayer owner = owner(helper, 10.5, 5, 6.5);
+        pin(helper, owner, 10.5, 5, 6.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 2, 5, 2);
+
+        helper.onEachTick(() -> {
+            net.minecraft.world.level.pathfinder.Path path = finishedPath(recruit);
+            if (path == null || path.getNextNodeIndex() < 1 || path.getNodeCount() == 0) return;
+            BlockPos end = path.getEndNode().asBlockPos();
+            int toDrop = com.talhanation.recruits.khaoskorps.EdgeProbe.distanceToDangerousDrop(helper.getLevel(),
+                    end.getX(), end.getY(), end.getZ(), recruit.getMaxFallDistance(), 4, null);
+            check.accept(end.subtract(helper.absolutePos(BlockPos.ZERO)), toDrop);
+            removeOwner(helper, owner);
+            helper.succeed();
+        });
+    }
+
+    /**
+     * With the defaults, a path to an owner standing at a rim it can reach ends on safe ground: no
+     * drop within 3 blocks of its end, where 1.15.2's ends beside the drop at the owner's feet.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 200)
+    public static void aPathToAnOwnerAtARimEndsBackFromTheEdge(GameTestHelper helper) {
+        followToTheRim(helper, (end, toDrop) -> {
+            if (toDrop != com.talhanation.recruits.khaoskorps.EdgeProbe.NONE && toDrop <= 3) {
+                throw new GameTestAssertException("the path to an owner at the rim ends at " + end.toShortString()
+                        + ", " + toDrop + " blocks from the drop; it should end more than 3 blocks back");
+            }
+        });
+    }
+
+    /** With edge care off, as in 1.15.2, the path ends at the owner, within 2 blocks of the drop (a search stops a block short). */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 200, batch = EDGE_CARE_OFF_BATCH)
+    public static void withEdgeCareOffAPathToAnOwnerAtARimEndsAtTheEdge(GameTestHelper helper) {
+        followToTheRim(helper, (end, toDrop) -> {
+            if (toDrop == com.talhanation.recruits.khaoskorps.EdgeProbe.NONE || toDrop > 2) {
+                throw new GameTestAssertException("with edge care off, the path to an owner at the rim ends at "
+                        + end.toShortString() + ", " + toDrop + " blocks from the drop, not within 2");
+            }
+        });
+    }
+
+    /**
      * The cliff trail: flat ground at stand height 5, with a five-deep ditch in lanes z = 2 and 3
-     * for x = 3..12, so lane z = 1 along it is a one-block trail beside a drop.
+     * for x = 3..10, so lane z = 1 along it is a one-block trail beside a drop. The ditch ends
+     * four blocks short of the owner's spot at x = 14, so the owner doesn't stand at an edge.
      */
     private static void cliffTrail(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 5);
-        for (int x = 3; x <= 12; x++) {
+        for (int x = 3; x <= 10; x++) {
             for (int z = 2; z <= CORRIDOR_Z_MAX; z++) {
                 for (int y = 0; y < 5; y++) helper.setBlock(x, y, z, Blocks.AIR);
             }
@@ -212,7 +286,7 @@ public class EdgeSafetyGameTests {
         speedAlongTheTrail(helper, 1.05, "its full follow speed");
     }
 
-    /** Records the speed the recruit is driven at while in the middle of the trail (x = 4.5..10.5). */
+    /** Records the speed the recruit is driven at while in the middle of the trail (x = 4.5..9.5). */
     private static void speedAlongTheTrail(GameTestHelper helper, double expected, String what) {
         cliffTrail(helper);
         ServerPlayer owner = owner(helper, 14.5, 5, 1.5);
@@ -225,7 +299,7 @@ public class EdgeSafetyGameTests {
             if (at.y < 4.99) {
                 throw new GameTestAssertException("the recruit fell off the trail: at " + describe(helper, recruit));
             }
-            if (at.x < 4.5 || at.x > 10.5 || !recruit.isFollowing()) return;
+            if (at.x < 4.5 || at.x > 9.5 || !recruit.isFollowing()) return;
             double speed = recruit.getMoveControl().getSpeedModifier();
             if (Math.abs(speed - expected) > 1e-6) {
                 throw new GameTestAssertException("on the trail at " + describe(helper, recruit) + " the recruit is driven at speed "
@@ -235,7 +309,7 @@ public class EdgeSafetyGameTests {
             samples[0]++;
         });
         helper.succeedWhen(() -> {
-            if (relative(helper, recruit).x <= 10.5 || samples[0] < 10) {
+            if (relative(helper, recruit).x <= 9.5 || samples[0] < 10) {
                 throw new GameTestAssertException("the recruit hasn't walked the trail yet: at " + describe(helper, recruit)
                         + ", " + samples[0] + " speed samples");
             }

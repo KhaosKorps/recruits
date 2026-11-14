@@ -70,4 +70,54 @@ public class DetourGameTests {
             removeOwner(helper, owner);
         });
     }
+
+    /**
+     * The planner on its own: asked for the way from the recruit north of the ravine to the owner
+     * south of it, it finds a route through the gap at the ravine's east end, with every waypoint on
+     * safe ground. Logs how many ticks and searches the plan took.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 600)
+    public static void aDetourPlanFindsTheWayRoundTheRavine(GameTestHelper helper) {
+        ravineArena(helper);
+        ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
+        pin(helper, owner, 24.5, 5, 33.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 24, 5, 12);
+        boolean[] requested = {false};
+
+        helper.onEachTick(() -> {
+            if (!requested[0]) {
+                if (helper.getTick() < 2) return;
+                requested[0] = com.talhanation.recruits.khaoskorps.DetourRoutes.request(owner, recruit,
+                        com.talhanation.recruits.khaoskorps.FollowSettings.current());
+                if (!requested[0]) throw new GameTestAssertException("setup: the plan didn't start");
+                return;
+            }
+            com.talhanation.recruits.khaoskorps.DetourPlan plan = com.talhanation.recruits.khaoskorps.DetourRoutes.plan(owner.getUUID());
+            if (plan == null) throw new GameTestAssertException("the plan was dropped before it finished");
+            if (plan.status() == com.talhanation.recruits.khaoskorps.DetourPlan.Status.PLANNING) return;
+            String measured = plan.searches() + " searches in " + plan.ticks() + " ticks";
+            if (plan.status() == com.talhanation.recruits.khaoskorps.DetourPlan.Status.FAILED) {
+                throw new GameTestAssertException("no way round the ravine found, after " + measured);
+            }
+            java.util.List<String> waypoints = new java.util.ArrayList<>();
+            boolean throughTheGap = false;
+            for (net.minecraft.core.BlockPos waypoint : plan.route()) {
+                net.minecraft.core.BlockPos rel = waypoint.subtract(helper.absolutePos(net.minecraft.core.BlockPos.ZERO));
+                waypoints.add(rel.toShortString());
+                if (rel.getX() >= 37) throughTheGap = true;
+                int toDrop = com.talhanation.recruits.khaoskorps.EdgeProbe.distanceToDangerousDrop(helper.getLevel(),
+                        waypoint.getX(), waypoint.getY(), waypoint.getZ(), recruit.getMaxFallDistance(), 3, null);
+                if (toDrop != com.talhanation.recruits.khaoskorps.EdgeProbe.NONE) {
+                    throw new GameTestAssertException("waypoint " + rel.toShortString() + " is " + toDrop
+                            + " blocks from a drop; route " + waypoints);
+                }
+            }
+            if (!throughTheGap) {
+                throw new GameTestAssertException("the route doesn't go through the gap at x = 37..46: " + waypoints + " (" + measured + ")");
+            }
+            Main.LOGGER.info("[KhaosKorps measure] detour plan round the test ravine: route {}, {}", waypoints, measured);
+            removeOwner(helper, owner);
+            helper.succeed();
+        });
+    }
 }

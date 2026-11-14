@@ -42,6 +42,8 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     // KhaosKorps fork: the edge care every path gets while it is set, and the path it was last applied to.
     @Nullable private EdgeCare edgeCare;
     @Nullable private Path edgeCareAppliedTo;
+    // KhaosKorps fork: KeepWalkingWhileRepathing: a new path still being searched, waiting beside the one walked.
+    @Nullable private Path pendingPath;
     // KhaosKorps fork: whether the next path point is beside a dangerous drop, worked out once per point.
     @Nullable private Path carefulPath;
     private int carefulNodeIndex = -1;
@@ -112,6 +114,8 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             return null;
         } else if (!this.canUpdatePath()) {
             return null;
+        } else if (this.pendingPath instanceof AsyncPath pending && !pending.isProcessed() && pending.hasSameProcessingPositions(p_148223_)) { // KhaosKorps fork: the waiting path is already searching these positions
+            return this.pendingPath;
         } else if (this.path != null && (path instanceof AsyncPath asyncPath && !asyncPath.isProcessed() && asyncPath.hasSameProcessingPositions(p_148223_))) { // petal start - catch early if it's still processing these positions let it keep processing
             return this.path;
         } else if (this.path != null && !this.path.isDone() && p_148223_.contains(this.targetPos)) {
@@ -130,7 +134,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             // petal start - async
             if(RecruitsServerConfig.UseAsyncPathfinding.get()) {
                 AsyncPathProcessor.awaitProcessing(path, this.level.getServer(), processedPath -> {
-                    if (processedPath != this.path){
+                    if (processedPath != this.path && processedPath != this.pendingPath){ // KhaosKorps fork: or the path waiting to take over
                         return; // petal - check that processing didn't take so long that we calculated a new path
                     }
 
@@ -163,6 +167,18 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         } finally {
             this.searchRange = 0;
         }
+    }
+
+    /** KhaosKorps fork: whether a finished path with points left is being walked. */
+    private boolean isWalkingAFinishedPath() {
+        return this.path != null && !(this.path instanceof AsyncPath walked && !walked.isProcessed()) && !this.path.isDone();
+    }
+
+    /** KhaosKorps fork: stopping also drops a path waiting to take over. */
+    @Override
+    public void stop() {
+        super.stop();
+        this.pendingPath = null;
     }
 
     /**
@@ -233,8 +249,17 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         if(Thread.currentThread().getThreadGroup() != SidedThreadGroups.SERVER) return false;
         if (p_26537_ == null) {
             this.path = null;
+            this.pendingPath = null; // KhaosKorps fork
             return false;
         }
+        // KhaosKorps fork: KeepWalkingWhileRepathing: while the new path is still searched, keep walking the old one.
+        if (p_26537_ instanceof AsyncPath incoming && !incoming.isProcessed() && p_26537_ != this.path
+                && FollowSettings.current().keepWalkingWhileRepathing() && this.isWalkingAFinishedPath()) {
+            this.pendingPath = p_26537_;
+            this.speedModifier = p_26538_;
+            return true;
+        }
+        this.pendingPath = null; // KhaosKorps fork
         if (!p_26537_.sameAs(this.path)) {
             this.path = p_26537_;
         }
@@ -278,6 +303,12 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     @Override
     public void tick() {
         ++this.tick;
+        // KhaosKorps fork: KeepWalkingWhileRepathing: the new path takes over once its search has finished.
+        if (this.pendingPath instanceof AsyncPath pending && pending.isProcessed()) {
+            this.path = pending;
+            this.pendingPath = null;
+            this.trimPath();
+        }
         if (this.hasDelayedRecomputation) {
             this.recomputePath();
         }

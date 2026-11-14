@@ -109,7 +109,8 @@ public final class KhaosKorpsServerConfig {
                         "OFF = no preference: a step costs what its block costs, and searches head straight for their target.")
                 .defineEnum("DirtPathPreference", d.dirtPathPreference());
         KeepWalkingWhileRepathing = builder
-                .comment("Keep walking the current path while the next one is calculated, instead of stopping (the stop-and-go).", "NOT USED YET: changing it has no effect in this build.")
+                .comment("Keep walking the current path while the next one is calculated on the path thread, instead of stopping",
+                        "for it (the stop-and-go). Only matters with UseAsyncPathfinding on.")
                 .define("KeepWalkingWhileRepathing", d.keepWalkingWhileRepathing());
         StaggerFollowRepaths = builder
                 .comment("Spread followers' new paths across ticks, by entity id, so a group told to follow together doesn't search all at once.")

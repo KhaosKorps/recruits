@@ -68,7 +68,10 @@ public class RecruitFollowOwnerGoal extends Goal {
     }
 
     public void start() {
-        this.timeToRecalcPath = 0;
+        FollowSettings settings = FollowSettings.current(); // KhaosKorps fork: StaggerFollowRepaths spreads a group's first re-plans by id
+        this.timeToRecalcPath = settings.staggerFollowRepaths()
+                ? this.recruit.getId() % Math.max(1, this.adjustedTickDelay(settings.followRepathTicks()))
+                : 0;
         this.recruit.setIsFollowing(true);
     }
 

@@ -210,6 +210,50 @@ public class FollowGoalSettingGameTests {
         });
     }
 
+    private static final String STAGGER = "khaoskorps_follow_stagger";
+
+    @BeforeBatch(batch = STAGGER)
+    public static void stagger(ServerLevel level) {
+        forkSettings(() -> KhaosKorpsServerConfig.StaggerFollowRepaths.set(true));
+    }
+
+    @AfterBatch(batch = STAGGER)
+    public static void afterStagger(ServerLevel level) {
+        resetForkSettings();
+    }
+
+    /**
+     * StaggerFollowRepaths: five recruits told to follow on the same tick start their re-plan
+     * countdowns at different points, by entity id, so a group doesn't search all at once.
+     */
+    @GameTest(template = T, timeoutTicks = 60, batch = STAGGER)
+    public static void withStaggerOnFollowersStartingTogetherReplanAtDifferentTimes(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        daytime(helper);
+        ServerPlayer owner = owner(helper, 14.5, 3, 2.5);
+        pin(helper, owner, 14.5, 3, 2.5);
+        java.util.List<AbstractRecruitEntity> group = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) group.add(followingRecruit(helper, owner, 1 + i % 3, 3, 1 + i / 3 * 2));
+        java.util.Set<Integer> starts = new java.util.HashSet<>();
+        boolean[] seen = new boolean[5];
+        helper.onEachTick(() -> {
+            for (int i = 0; i < group.size(); i++) {
+                if (seen[i] || !group.get(i).isFollowing()) continue;
+                seen[i] = true;
+                starts.add(countdown(followGoal(group.get(i))));
+            }
+            for (boolean s : seen) if (!s) return;
+            removeOwner(helper, owner);
+            group.forEach(AbstractRecruitEntity::discard);
+            if (starts.size() < 3) {
+                throw new GameTestAssertException("five followers that started together have only " + starts.size()
+                        + " distinct re-plan countdowns: " + starts);
+            }
+            helper.succeed();
+        });
+    }
+
     private static RecruitFollowOwnerGoal followGoal(AbstractRecruitEntity recruit) {
         for (WrappedGoal wrapped : recruit.goalSelector.getAvailableGoals()) {
             if (wrapped.getGoal() instanceof RecruitFollowOwnerGoal goal) return goal;

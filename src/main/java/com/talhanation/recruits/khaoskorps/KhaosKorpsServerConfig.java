@@ -112,7 +112,7 @@ public final class KhaosKorpsServerConfig {
                 .comment("Keep walking the current path while the next one is calculated, instead of stopping (the stop-and-go).", "NOT USED YET: changing it has no effect in this build.")
                 .define("KeepWalkingWhileRepathing", d.keepWalkingWhileRepathing());
         StaggerFollowRepaths = builder
-                .comment("Spread followers' new paths across ticks, so a group doesn't search all at once.", "NOT USED YET: changing it has no effect in this build.")
+                .comment("Spread followers' new paths across ticks, by entity id, so a group told to follow together doesn't search all at once.")
                 .define("StaggerFollowRepaths", d.staggerFollowRepaths());
         EdgeMargin = builder
                 .comment("While following, keep paths back from drops deeper than the fall distance, and never take a drop of two",

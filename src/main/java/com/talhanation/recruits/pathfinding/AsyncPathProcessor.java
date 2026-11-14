@@ -29,7 +29,7 @@ public class AsyncPathProcessor {
         int queueCapacity = workersCount * 8;
 
         pathFindingExecutor = new ThreadPoolExecutor(
-                1,
+                workersCount, // KhaosKorps fork: was 1, so threads past the first started only once the queue was full
                 workersCount,
                 60,
                 TimeUnit.SECONDS,

@@ -1,5 +1,7 @@
 package com.talhanation.recruits.entities.ai;
 
+import com.talhanation.recruits.khaoskorps.PathLog;
+import com.talhanation.recruits.khaoskorps.PathLogRecord;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.entities.BowmanEntity;
 import com.talhanation.recruits.entities.CrossBowmanEntity;
@@ -43,6 +45,7 @@ public class RecruitMeleeAttackGoal extends Goal {
         boolean canSee = this.recruit.getSensing().hasLineOfSight(target);
         if (isClose && canSee && canAttackHoldPos() && recruit.getState() != 3 && !recruit.needsToGetFood() && !recruit.getShouldMount() && !recruit.getShouldMovePos()) {
             double distance = this.recruit.distanceToSqr(target.getX(), target.getY(), target.getZ());
+            PathLog.purpose(this.recruit, PathLogRecord.MELEE); // KhaosKorps fork: PathLog
             this.path = this.recruit.getNavigation().createPath(target, 0);
             if (this.path != null) {
                 return true;
@@ -126,6 +129,7 @@ public class RecruitMeleeAttackGoal extends Goal {
                 } else if (distanceToTarget > 256.0D) {
                     this.pathingCooldown += 5;
                 }
+                PathLog.purpose(this.recruit, PathLogRecord.MELEE); // KhaosKorps fork: PathLog
                 this.recruit.getNavigation().moveTo(target, this.speedModifier);
             }
         }

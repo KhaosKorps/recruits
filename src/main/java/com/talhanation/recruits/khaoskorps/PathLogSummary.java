@@ -76,6 +76,11 @@ public final class PathLogSummary {
         return this.windowTicks == 0;
     }
 
+    /** Whether the recruit was in Follow Me on any tick of this window. */
+    public boolean followedThisWindow() {
+        return this.followTicks > 0;
+    }
+
     /** The row for this window, then the counts start again; whether the goal runs carries over. */
     public String row(long tick, String recruit, int speedMilli, long droppedRows) {
         int average = this.distanceSamples == 0 ? -1 : (int) Math.round((double) this.distanceSum / this.distanceSamples);

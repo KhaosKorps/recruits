@@ -89,6 +89,11 @@ public final class PathLogRecord {
         return this.failed;
     }
 
+    /** Whether the search has run, found or failed. */
+    public boolean ran() {
+        return this.thread != NOT_RUN;
+    }
+
     public long requestNanos() {
         return this.requestNanos;
     }

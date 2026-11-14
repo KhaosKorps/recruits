@@ -1,5 +1,7 @@
 package com.talhanation.recruits.khaoskorps;
 
+import com.talhanation.recruits.pathfinding.AsyncPath;
+import com.talhanation.recruits.pathfinding.AsyncPathProcessor;
 import com.google.common.collect.ImmutableSet;
 import com.talhanation.recruits.config.RecruitsServerConfig;
 import com.talhanation.recruits.pathfinding.AsyncPathfinder;
@@ -46,10 +48,21 @@ public final class DetourSearch {
                 ? new AsyncPathfinder(DetourNodeEvaluator.create(), budget, DetourNodeEvaluator.GENERATOR, level)
                 : new PathFinder(DetourNodeEvaluator.create(), budget);
         DetourNodeEvaluator.setNextStart(from);
+        PathLogRecord logged = PathLog.request(mob, PathLogRecord.DETOUR, ImmutableSet.of(to), budget);
+        Path path;
         try {
-            return finder.findPath(region, mob, ImmutableSet.of(to), range, reach, 1.0F);
+            path = finder.findPath(region, mob, ImmutableSet.of(to), range, reach, 1.0F);
         } finally {
+            PathLog.requestDone(logged);
             DetourNodeEvaluator.setNextStart(null);
         }
+        if (logged != null) {
+            if (path instanceof AsyncPath) {
+                AsyncPathProcessor.awaitProcessing(path, level.getServer(), result -> PathLog.arrived(logged, result, false, level.getGameTime()));
+            } else {
+                PathLog.ranInline(logged, path);
+            }
+        }
+        return path;
     }
 }

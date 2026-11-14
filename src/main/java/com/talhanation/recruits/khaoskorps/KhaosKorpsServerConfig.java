@@ -145,7 +145,10 @@ public final class KhaosKorpsServerConfig {
                 .comment("Multiplies every recruit's swimming speed. 1.0 = unchanged. Never saved: a recruit's own speed stays as it was.")
                 .defineInRange("SwimSpeedMultiplier", d.swimSpeedMultiplier(), 0.1, 3.0);
         PathLog = builder
-                .comment("Write the path measurement log to logs/recruits-paths/. Off by default.", "NOT USED YET: changing it has no effect in this build.")
+                .comment("Write the path measurement log to logs/recruits-paths/ in the server folder: one CSV row per path search, one per",
+                        "following recruit every 100 ticks, and one per settings change, in three files named by the time logging",
+                        "started. The server log gets one line when it starts and one when it stops. Applies when this file is saved.",
+                        "Off by default.")
                 .define("PathLog", d.pathLog());
         builder.pop();
 

@@ -1,5 +1,7 @@
 package com.talhanation.recruits.entities.ai;
 
+import com.talhanation.recruits.khaoskorps.PathLog;
+import com.talhanation.recruits.khaoskorps.PathLogRecord;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 
 import com.talhanation.recruits.entities.CaptainEntity;
@@ -54,6 +56,7 @@ public class RecruitFollowOwnerGoal extends Goal {
             }
             else {
                 this.owner = livingentity;
+                PathLog.follower(this.recruit); // KhaosKorps fork: PathLog counts its ticks from now
                 return this.recruit.getShouldFollow() && !recruit.getFleeing() && recruit.getFollowState() == 1 && !recruit.needsToGetFood() && !recruit.getShouldMount() && !recruit.getShouldMovePos();
             }
         }
@@ -73,6 +76,7 @@ public class RecruitFollowOwnerGoal extends Goal {
         this.timeToRecalcPath = 0;
         this.staggerFirstReplan = FollowSettings.current().staggerFollowRepaths(); // KhaosKorps fork
         this.detour.started(this.recruit.getCommandSenderWorld().getGameTime()); // KhaosKorps fork
+        PathLog.followGoalStarted(this.recruit); // KhaosKorps fork
         this.recruit.setIsFollowing(true);
     }
 
@@ -83,6 +87,7 @@ public class RecruitFollowOwnerGoal extends Goal {
         this.clearEdgeCare(); // KhaosKorps fork
         this.detour.notePath(this.recruit.getNavigation() instanceof AsyncPathNavigation latest ? latest.latestPath() : this.recruit.getNavigation().getPath()); // KhaosKorps fork: before the path is cleared
         this.detour.stopped(this.recruit.getCommandSenderWorld().getGameTime()); // KhaosKorps fork
+        PathLog.followGoalStopped(this.recruit); // KhaosKorps fork
         this.recruit.getNavigation().stop();
     }
 
@@ -118,12 +123,16 @@ public class RecruitFollowOwnerGoal extends Goal {
                 this.detour.notePath(asyncNavigation.latestPath());
                 BlockPos waypoint = this.detour.waypoint(this.recruit, this.owner, settings);
                 if (waypoint != null) {
+                    PathLog.purpose(this.recruit, PathLogRecord.WAYPOINT);
                     asyncNavigation.moveTo(asyncNavigation.createPath(waypoint, 1), settings.followSpeed());
                 } else {
+                    PathLog.purpose(this.recruit, PathLogRecord.FOLLOW);
                     asyncNavigation.moveTo(this.owner, settings.followSpeed(), settings.followMaxPathLength());
                 }
             } else {
+                PathLog.VanillaMove logged = PathLog.vanillaMove(navigation); // KhaosKorps fork: PathLog, a mounted follower on its horse's navigation
                 navigation.moveTo(this.owner, settings.followSpeed()); // KhaosKorps fork: speed from the settings
+                PathLog.vanillaMoved(logged, this.recruit, navigation, this.owner); // KhaosKorps fork
             }
 
             if(this.recruit instanceof CaptainEntity captain && captain.getVehicle() instanceof Boat){

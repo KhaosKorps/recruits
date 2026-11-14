@@ -63,6 +63,18 @@ public class AsyncPathProcessor {
         }
     }
 
+    /** KhaosKorps fork: jobs waiting in the worker queue, for the path log. */
+    public static int queuedJobs() {
+        ThreadPoolExecutor executor = pathFindingExecutor;
+        return executor == null ? 0 : executor.getQueue().size();
+    }
+
+    /** KhaosKorps fork: whether the path workers are running, for the path log. */
+    public static boolean workersRunning() {
+        ThreadPoolExecutor executor = pathFindingExecutor;
+        return executor != null && !executor.isShutdown();
+    }
+
     protected static void queue(@NotNull AsyncPath path) {
         ThreadPoolExecutor executor = pathFindingExecutor;
         if (executor == null || executor.isShutdown()) {

@@ -1,5 +1,7 @@
 package com.talhanation.recruits.pathfinding;
 
+import com.talhanation.recruits.khaoskorps.PathLog;
+import com.talhanation.recruits.khaoskorps.PathLogRecord;
 import com.google.common.collect.ImmutableSet;
 import com.talhanation.recruits.config.RecruitsServerConfig;
 import com.talhanation.recruits.khaoskorps.EdgeCare;
@@ -109,6 +111,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     protected Path createPath(Set<BlockPos> p_148223_, int p_148224_, boolean p_148225_, int p_148226_, float p_148227_) {
         if(Thread.currentThread().getThreadGroup() != SidedThreadGroups.SERVER) return null;
         this.takePendingIfFinished(); // KhaosKorps fork: so the checks below see the newest path
+        char purpose = PathLog.takePurpose(this.mob); // KhaosKorps fork: PathLog, what the caller asked this search for
         if (p_148223_.isEmpty()) {
             return null;
         } else if (this.mob.getY() < (double) this.level.getMinBuildHeight()) {
@@ -116,8 +119,10 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         } else if (!this.canUpdatePath()) {
             return null;
         } else if (this.pendingPath instanceof AsyncPath pending && !pending.isProcessed() && pending.hasSameProcessingPositions(p_148223_)) { // KhaosKorps fork: the waiting path is already searching these positions
+            PathLog.reused(this.mob); // KhaosKorps fork
             return this.pendingPath;
         } else if (this.path != null && (path instanceof AsyncPath asyncPath && !asyncPath.isProcessed() && asyncPath.hasSameProcessingPositions(p_148223_))) { // petal start - catch early if it's still processing these positions let it keep processing
+            PathLog.reused(this.mob); // KhaosKorps fork
             return this.path;
         } else if (this.path != null && !this.path.isDone() && p_148223_.contains(this.targetPos)) {
             return this.path;
@@ -127,7 +132,10 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             PathNavigationRegion pathnavigationregion = new PathNavigationRegion(this.level, blockpos.offset(-i, -i, -i), blockpos.offset(i, i, i));
             float maxVisitedNodesMultiplier = FollowSettings.searchBudgetMultiplier( // KhaosKorps fork: was 1.0F
                     FollowSettings.current().searchNodesPerBlock(), p_148227_, this.baseSearchBudget);
+            PathLogRecord logged = PathLog.request(this.mob, purpose, p_148223_, (int) (this.baseSearchBudget * maxVisitedNodesMultiplier)); // KhaosKorps fork
             Path path = this.pathFinder.findPath(pathnavigationregion, this.mob, p_148223_, p_148227_, p_148226_, maxVisitedNodesMultiplier);
+            PathLog.requestDone(logged); // KhaosKorps fork
+            if (!(path instanceof AsyncPath)) PathLog.ranInline(logged, path); // KhaosKorps fork: searched here, or no start found
 
             if (!p_148223_.isEmpty())
                 this.targetPos = p_148223_.iterator().next(); // petal - assign early a target position. most calls will only have 1 position
@@ -135,6 +143,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             // petal start - async
             if(RecruitsServerConfig.UseAsyncPathfinding.get()) {
                 AsyncPathProcessor.awaitProcessing(path, this.level.getServer(), processedPath -> {
+                    PathLog.arrived(logged, processedPath, processedPath != this.path && processedPath != this.pendingPath, this.level.getGameTime()); // KhaosKorps fork
                     if (processedPath != this.path && processedPath != this.pendingPath){ // KhaosKorps fork: or the path waiting to take over
                         return; // petal - check that processing didn't take so long that we calculated a new path
                     }
@@ -252,6 +261,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         long currentTick = this.level.getGameTime();
         // Paper start - Pathfinding optimizations
         if (this.pathfindFailures > 10 && this.path == null && currentTick < this.lastFailure + 40) {
+            PathLog.gaveUp(this.mob); // KhaosKorps fork
             return false;
         }
         // Paper end
@@ -334,7 +344,10 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             this.recomputePath();
         }
 
-        if (this.path instanceof AsyncPath asyncPath && !asyncPath.isProcessed()) return;
+        if (this.path instanceof AsyncPath asyncPath && !asyncPath.isProcessed()) {
+            PathLog.stalled(this.mob); // KhaosKorps fork: no walk input this tick, waiting for the search
+            return;
+        }
         this.applyEdgeCare(); // KhaosKorps fork
 
         if (!this.isDone()) {

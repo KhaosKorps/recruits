@@ -1,5 +1,7 @@
 package com.talhanation.recruits.pathfinding;
 
+import com.talhanation.recruits.khaoskorps.PathLog;
+import com.talhanation.recruits.khaoskorps.PathLogRecord;
 import com.google.common.collect.Lists;
 import com.talhanation.recruits.Main;
 import net.minecraft.core.BlockPos;
@@ -45,6 +47,7 @@ public class AsyncPathfinder extends PathFinder {
         //this.openSet.clear(); // petal - it's always cleared in processPath
         // petal start - use a generated evaluator if we have one otherwise run sync
         var nodeEvaluator = this.nodeEvaluatorGenerator == null ? this.nodeEvaluator : NodeEvaluatorCache.takeNodeEvaluator(this.nodeEvaluatorGenerator);
+        PathLogRecord logged = PathLog.requested(); // KhaosKorps fork: PathLog, the request this search serves
         nodeEvaluator.prepare(p_77428_, p_77429_);
         Node node = nodeEvaluator.getStart();
 
@@ -69,12 +72,17 @@ public class AsyncPathfinder extends PathFinder {
                 return null;
             }
             return new AsyncPath(Lists.newArrayList(), p_77430_, this.level, () -> {
+                long logStarted = PathLog.searchStarted(logged); // KhaosKorps fork
                 try {
-                    return this.processPath(nodeEvaluator, node, map, p_77431_, p_77432_, p_77433_);
+                    Path found = this.processPath(nodeEvaluator, node, map, p_77431_, p_77432_, p_77433_);
+                    PathLog.searchFound(logged, found, logStarted); // KhaosKorps fork
+                    return found;
                 }  catch (Exception e) {
                         e.printStackTrace();
+                        PathLog.searchFailed(logged, logStarted); // KhaosKorps fork
                         return null;
                 } finally {
+                    PathLog.searchEnded(logged, logStarted); // KhaosKorps fork: an Error leaves no result to log later
                     nodeEvaluator.done();
                     NodeEvaluatorCache.returnNodeEvaluator(nodeEvaluator);
                 }
@@ -162,6 +170,7 @@ public class AsyncPathfinder extends PathFinder {
 
         // petal - ignore this warning, we know that the above loop always runs at least once since positions is not empty
         //noinspection ConstantConditions
+        PathLog.nodes(i); // KhaosKorps fork
         return best;
         // Paper end
         // petal end

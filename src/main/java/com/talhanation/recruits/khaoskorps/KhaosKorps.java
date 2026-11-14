@@ -20,5 +20,6 @@ public final class KhaosKorps {
         MinecraftForge.EVENT_BUS.register(RecruitSpeedSettings.class);
         MinecraftForge.EVENT_BUS.register(ServerTickTasks.class);
         MinecraftForge.EVENT_BUS.register(ArrowCleaner.class);
+        MinecraftForge.EVENT_BUS.register(PathLog.class);
     }
 }

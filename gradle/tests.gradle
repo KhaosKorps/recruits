@@ -42,6 +42,20 @@ test {
     }
 }
 
+// Every GameTest run starts from a fresh world, so nothing an earlier run left behind (recruits,
+// factions, groups) is loaded into it. Saved entities load after their chunk's blocks, so a
+// leftover recruit would reappear inside a test arena the framework had already cleared.
+// world/serverconfig is kept, so a run with UseAsyncPathfinding off is set up by editing
+// world/serverconfig/recruits-server.toml before the run. The fork's own settings file goes too:
+// a run that stops mid-batch would leave that batch's values in it, and Forge writes it afresh
+// with the defaults.
+tasks.matching { it.name == 'runGameTestServer' }.configureEach {
+    doFirst {
+        project.delete(project.fileTree('build/gametest-run/world') { exclude 'serverconfig/**' })
+        project.delete('build/gametest-run/world/serverconfig/recruits-khaoskorps-server.toml')
+    }
+}
+
 minecraft {
     runs {
         client {

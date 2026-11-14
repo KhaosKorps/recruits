@@ -239,6 +239,27 @@ public final class GameTestSupport {
         return entity.position().subtract(origin.getX(), origin.getY(), origin.getZ());
     }
 
+    /**
+     * What a recruit's navigation is doing, for failure messages: its path's target and progress,
+     * whether it stands on the ground, its motion, and any other entity within two blocks.
+     */
+    public static String navigationState(GameTestHelper helper, AbstractRecruitEntity recruit) {
+        Path path = recruit.getNavigation().getPath();
+        String route = path == null ? "no path"
+                : "path to " + relativeBlock(helper, path.getTarget()) + ", node " + path.getNextNodeIndex() + " of "
+                + path.getNodeCount() + (path.isDone() ? ", done" : "") + (path.canReach() ? "" : ", partial");
+        String others = helper.getLevel().getEntities(recruit, recruit.getBoundingBox().inflate(2.0)).stream()
+                .map(e -> e.getClass().getSimpleName() + " at " + describe(helper, e)).toList().toString();
+        return route + "; on ground " + recruit.onGround() + ", motion " + String.format("(%.3f, %.3f, %.3f)",
+                recruit.getDeltaMovement().x, recruit.getDeltaMovement().y, recruit.getDeltaMovement().z)
+                + "; nearby " + others;
+    }
+
+    private static String relativeBlock(GameTestHelper helper, BlockPos pos) {
+        BlockPos origin = helper.absolutePos(BlockPos.ZERO);
+        return "(" + (pos.getX() - origin.getX()) + ", " + (pos.getY() - origin.getY()) + ", " + (pos.getZ() - origin.getZ()) + ")";
+    }
+
     public static String describe(GameTestHelper helper, Entity entity) {
         Vec3 p = relative(helper, entity);
         return String.format("(%.2f, %.2f, %.2f)", p.x, p.y, p.z);

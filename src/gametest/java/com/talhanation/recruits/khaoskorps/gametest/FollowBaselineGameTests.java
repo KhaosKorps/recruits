@@ -69,7 +69,8 @@ public class FollowBaselineGameTests {
             owner.setPos(at.x, at.y, at.z);
             if (t <= 40 && recruit.isFollowing()) {
                 throw new GameTestAssertException("the recruit started following with the owner "
-                        + String.format("%.2f", Math.sqrt(recruit.distanceToSqr(owner))) + " blocks away, inside the start distance");
+                        + String.format("%.2f", Math.sqrt(recruit.distanceToSqr(owner))) + " blocks away, inside the start distance;"
+                        + " the recruit is at " + describe(helper, recruit) + ", spawned at (2.50, 3.00, 2.50), at tick " + t);
             }
             if (recruit.isFollowing()) sawFollow[0] = true;
         });
@@ -80,7 +81,8 @@ public class FollowBaselineGameTests {
             double d = recruit.distanceToSqr(owner);
             if (recruit.isFollowing() || d > STOP_DISTANCE_SQR) {
                 throw new GameTestAssertException("the recruit hasn't stopped within the stop distance: "
-                        + String.format("%.2f", Math.sqrt(d)) + " blocks, following " + recruit.isFollowing());
+                        + String.format("%.2f", Math.sqrt(d)) + " blocks, following " + recruit.isFollowing()
+                        + ", at " + describe(helper, recruit) + "; " + navigationState(helper, recruit));
             }
             removeOwner(helper, owner);
         });

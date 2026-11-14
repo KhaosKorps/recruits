@@ -120,6 +120,29 @@ public class DetourGameTests {
      */
     @GameTest(template = ARENA, timeoutTicks = 600)
     public static void aDetourPlanFindsTheWayRoundTheRavine(GameTestHelper helper) {
+        planRoundTheRavine(helper, "ORIGINAL");
+    }
+
+    static final String DIRT_PATH_OFF = "khaoskorps_detour_dirt_path_off";
+
+    @net.minecraft.gametest.framework.BeforeBatch(batch = DIRT_PATH_OFF)
+    public static void dirtPathOff(net.minecraft.server.level.ServerLevel level) {
+        forkSettings(() -> com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.DirtPathPreference.set(
+                com.talhanation.recruits.khaoskorps.FollowSettings.DirtPathPreference.OFF));
+    }
+
+    @net.minecraft.gametest.framework.AfterBatch(batch = DIRT_PATH_OFF)
+    public static void afterDirtPathOff(net.minecraft.server.level.ServerLevel level) {
+        resetForkSettings();
+    }
+
+    /** The same plan with DirtPathPreference OFF, logged for comparison: searches no longer spread over open ground. */
+    @GameTest(template = ARENA, timeoutTicks = 600, batch = DIRT_PATH_OFF)
+    public static void withDirtPathOffADetourPlanFindsTheWayRoundTheRavine(GameTestHelper helper) {
+        planRoundTheRavine(helper, "OFF");
+    }
+
+    private static void planRoundTheRavine(GameTestHelper helper, String dirtPath) {
         ravineArena(helper);
         ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
         pin(helper, owner, 24.5, 5, 33.5);
@@ -157,7 +180,7 @@ public class DetourGameTests {
             if (!throughTheGap) {
                 throw new GameTestAssertException("the route doesn't go through the gap at x = 37..46: " + waypoints + " (" + measured + ")");
             }
-            Main.LOGGER.info("[KhaosKorps measure] detour plan round the test ravine: route {}, {}", waypoints, measured);
+            Main.LOGGER.info("[KhaosKorps measure] detour plan round the test ravine, dirt path {}: route {}, {}", dirtPath, waypoints, measured);
             removeOwner(helper, owner);
             helper.succeed();
         });

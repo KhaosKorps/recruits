@@ -102,10 +102,11 @@ public final class KhaosKorpsServerConfig {
                         "or FollowMaxPathLength while following). 16 in 1.15.2.")
                 .defineInRange("SearchNodesPerBlock", d.searchNodesPerBlock(), 1, 256);
         DirtPathPreference = builder
-                .comment("How strongly paths prefer dirt paths.",
-                        "ORIGINAL = 1.15.2, which also makes the search run out of budget early;",
-                        "ONCE = the same preference, counted once per path point; OFF = no preference.",
-                        "NOT USED YET: changing it has no effect in this build.")
+                .comment("How strongly paths prefer dirt paths. Plain ground costs 2 more per side without a dirt path.",
+                        "ORIGINAL = 1.15.2: that cost is added again each time the search looks at a point, so plain ground",
+                        "grows dearer and searches spread out and run out of budget early;",
+                        "ONCE = the same preference, counted once per point (upstream's fix); searches still spread on open ground;",
+                        "OFF = no preference: a step costs what its block costs, and searches head straight for their target.")
                 .defineEnum("DirtPathPreference", d.dirtPathPreference());
         KeepWalkingWhileRepathing = builder
                 .comment("Keep walking the current path while the next one is calculated, instead of stopping (the stop-and-go).", "NOT USED YET: changing it has no effect in this build.")

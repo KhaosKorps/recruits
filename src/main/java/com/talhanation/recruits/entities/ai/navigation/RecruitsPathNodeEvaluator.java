@@ -43,6 +43,10 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     private int z;
     // KhaosKorps fork: edge care for this search, read in prepare() on the server thread; a margin of 0 is off.
     private int edgeMargin;
+    // KhaosKorps fork: the dirt-path preference for this search, read in prepare() on the server thread.
+    private FollowSettings.DirtPathPreference dirtPath = FollowSettings.DirtPathPreference.ORIGINAL;
+    private static final Direction[] HORIZONTAL = Direction.Plane.HORIZONTAL.stream().toArray(Direction[]::new);
+    private static final Direction[] NO_DIRECTIONS = new Direction[0];
     private int edgeMaxFall;
     private final Long2ByteOpenHashMap edgeDropColumns = newDropColumnCache();
     private final LongOpenHashSet edgeCostedNodes = new LongOpenHashSet();
@@ -67,6 +71,7 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
         FollowSettings settings = FollowSettings.current(); // KhaosKorps fork
         this.edgeMargin = settings.edgeMargin() && this.edgeCareApplies(mob) ? settings.edgeMarginBlocks() : 0; // KhaosKorps fork
         this.edgeMaxFall = mob.getMaxFallDistance(); // KhaosKorps fork
+        this.dirtPath = settings.dirtPathPreference(); // KhaosKorps fork
         if(mob.isVehicle()){
             this.entityHeight = Mth.floor(mob.getBbHeight() + (float) getEntityHeight());
         }
@@ -101,7 +106,12 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     //prefer walk on stairs when goal pos is higher or lower current position >2 blocks
     //prefer walk on ways with no leaves
     protected @NotNull Node getNode(int x, int y, int z) {
+        // KhaosKorps fork: DirtPathPreference. ORIGINAL adds the costs below on every look at a point, as 1.15.2
+        // does; ONCE adds them only when the point is created, as upstream's 453794ce does; OFF also drops the
+        // dirt-path preference, so a step costs what its block costs.
+        boolean isNew = !this.nodes.containsKey(Node.createHash(x, y, z));
         Node node = super.getNode(x, y, z);
+        if (!isNew && this.dirtPath != FollowSettings.DirtPathPreference.ORIGINAL) return node;
         BlockPathTypes blockpathtypes = this.getCachedBlockType(this.mob, x, y, z);
         float f = this.mob.getPathfindingMalus(blockpathtypes);
 
@@ -114,7 +124,7 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
 
             BlockPos aboveEntityHeightPos = pos.above(getEntityHeight());
 
-            for (Direction direction : Direction.Plane.HORIZONTAL) {
+            for (Direction direction : this.dirtPath == FollowSettings.DirtPathPreference.OFF ? NO_DIRECTIONS : HORIZONTAL) { // KhaosKorps fork
                 mutablePos.set(pos).move(direction);
                 BlockState belowStateNeighbors = this.level.getBlockState(mutablePos.below());
 

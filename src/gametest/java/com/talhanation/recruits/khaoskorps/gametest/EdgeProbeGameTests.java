@@ -76,6 +76,30 @@ public class EdgeProbeGameTests {
         helper.succeed();
     }
 
+    /**
+     * Lava is deadly, so it counts as a dangerous drop however shallow: a column whose ground is lava
+     * one block down, and a column of lava level with the ground, beside flat ground at stand height 5.
+     * Water one block down stays safe. The lava and water are removed again before they can flow.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
+    public static void lavaIsADangerousDropAndWaterIsNot(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 5);
+        helper.setBlock(8, 4, Z, Blocks.LAVA);
+        helper.setBlock(11, 5, Z, Blocks.LAVA);
+        helper.setBlock(4, 4, Z, Blocks.WATER);
+        boolean lavaBelow = dangerous(helper, 8, 5, 1);
+        boolean lavaLevel = dangerous(helper, 11, 5, 1);
+        boolean waterBelow = dangerous(helper, 4, 5, 1);
+        helper.setBlock(8, 4, Z, Blocks.STONE);
+        helper.setBlock(11, 5, Z, Blocks.AIR);
+        helper.setBlock(4, 4, Z, Blocks.STONE);
+        check(lavaBelow, "a column with lava one block down isn't a dangerous drop");
+        check(lavaLevel, "a column of lava level with the ground isn't a dangerous drop");
+        check(!waterBelow, "a column with water one block down counts as a dangerous drop");
+        helper.succeed();
+    }
+
     /** Barrier walls and water are not drops: one can't be walked into, the other is swum in. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
     public static void wallsAndWaterAreNotDrops(GameTestHelper helper) {

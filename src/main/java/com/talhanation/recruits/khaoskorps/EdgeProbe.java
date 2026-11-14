@@ -2,6 +2,7 @@ package com.talhanation.recruits.khaoskorps;
 
 import it.unimi.dsi.fastutil.longs.Long2ByteMap;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.state.BlockState;
@@ -26,17 +27,20 @@ public final class EdgeProbe {
 
     /**
      * Whether stepping into column (x, z) at feet height {@code feetY} means falling more than
-     * {@code maxFall} blocks: the column is open at feet height, and nothing below it within
-     * {@code maxFall + 1} blocks can be stood on or swum in. A column that is solid at feet height
-     * is a wall or a step up, not a drop.
+     * {@code maxFall} blocks, or into lava: the column is lava at feet height; or it is open there,
+     * and below it, within {@code maxFall + 1} blocks, is lava or nothing that can be stood on or
+     * swum in. A column that is solid at feet height is a wall or a step up, not a drop; water is
+     * something to land in.
      */
     public static boolean isDangerousDrop(BlockGetter level, int x, int feetY, int z, int maxFall) {
         if (level instanceof LevelReader reader && !reader.hasChunkAt(x, z)) return false;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, feetY, z);
+        if (isLava(level, pos)) return true;
         if (!isOpen(level, pos)) return false;
         for (int below = 1; below <= maxFall + 1; below++) {
             pos.setY(feetY - below);
             if (pos.getY() < level.getMinBuildHeight()) return true;
+            if (isLava(level, pos)) return true;
             if (!isOpen(level, pos)) return false;
         }
         return true;
@@ -95,11 +99,13 @@ public final class EdgeProbe {
             int cx = x + Math.round((float) (step * dx) / ring);
             int cz = z + Math.round((float) (step * dz) / ring);
             if (level instanceof LevelReader reader && !reader.hasChunkAt(cx, cz)) return UNREACHABLE;
-            if (isOpen(level, pos.set(cx, feet, cz))) {
+            if (isLava(level, pos.set(cx, feet, cz))) return UNREACHABLE;
+            if (isOpen(level, pos)) {
                 int fall = 0;
                 while (isOpen(level, pos.set(cx, feet - fall - 1, cz))) {
                     if (++fall > maxFall || feet - fall - 1 < level.getMinBuildHeight()) return UNREACHABLE;
                 }
+                if (isLava(level, pos)) return UNREACHABLE;
                 feet -= fall;
             } else if (isOpen(level, pos.set(cx, feet + 1, cz)) && isOpen(level, pos.set(cx, feet + 2, cz))) {
                 feet += 1;
@@ -119,6 +125,10 @@ public final class EdgeProbe {
         boolean dangerous = isDangerousDrop(level, x, feetY, z, maxFall);
         cache.put(key, (byte) (dangerous ? 1 : 0));
         return dangerous;
+    }
+
+    private static boolean isLava(BlockGetter level, BlockPos pos) {
+        return level.getFluidState(pos).is(FluidTags.LAVA);
     }
 
     /** Open: nothing to collide with and no fluid, so a mob would fall through it. */

@@ -135,10 +135,10 @@ public final class KhaosKorpsServerConfig {
                         "distance, through loaded chunks only. One plan per owner, shared by its followers. On by default.")
                 .define("DetourSearch", d.detourSearch());
         MovementSpeedMultiplier = builder
-                .comment("Multiplies every recruit's movement speed. 1.0 = unchanged.", "NOT USED YET: changing it has no effect in this build.")
+                .comment("Multiplies every recruit's movement speed. 1.0 = unchanged. Never saved: a recruit's own speed stays as it was.")
                 .defineInRange("MovementSpeedMultiplier", d.movementSpeedMultiplier(), 0.1, 3.0);
         SwimSpeedMultiplier = builder
-                .comment("Multiplies every recruit's swimming speed. 1.0 = unchanged.", "NOT USED YET: changing it has no effect in this build.")
+                .comment("Multiplies every recruit's swimming speed. 1.0 = unchanged. Never saved: a recruit's own speed stays as it was.")
                 .defineInRange("SwimSpeedMultiplier", d.swimSpeedMultiplier(), 0.1, 3.0);
         PathLog = builder
                 .comment("Write the path measurement log to logs/recruits-paths/. Off by default.", "NOT USED YET: changing it has no effect in this build.")

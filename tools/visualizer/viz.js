@@ -24,7 +24,18 @@
 
   // ---------- the world being shown ----------
   var W = null;
-  var st = { src: 0, s: 0, k: 0, t: 0, sel: null, color: 'order', path: true, cut: false, runOverlay: true, playS: null, playT: null };
+  var st = { src: 0, s: 0, k: 0, t: 0, r: 0, heat: false, sel: null, color: 'order', path: true, cut: false, runOverlay: true, playS: null, playT: null };
+
+  // ---------- group runs: one recording, many recruits ----------
+  function group() { return W && W.run && W.run.recruits ? W.run.recruits : null; }
+  /** The ticks of the recruit being followed: the only one in a single run, the chosen one in a group run. */
+  function focusTicks() { var g = group(); return g ? g[st.r].ticks : W.run.ticks; }
+  function lastTick() {
+    var g = group(); if (!g) return W.run.ticks.length - 1;
+    return g.reduce(function (m, r) { return Math.max(m, r.ticks.length - 1); }, 0);
+  }
+  function tickAt(ticks, t) { return ticks.length ? ticks[Math.min(t, ticks.length - 1)] : null; }
+  function outcomeColor(o) { return o === 'reached' ? css('--good') : o === 'dead' ? css('--bad') : o === 'pit' || o === 'edge' ? css('--drop-line') : css('--muted'); }
 
   function setWorld(data, kind) {
     var size = data.size;
@@ -63,7 +74,7 @@
       var src = s.same !== undefined ? list[s.same] : s;
       var o = { id: s.id, kind: s.kind, tick: s.tick, start: s.start || [0, 0, 0], target: s.target || [0, 0, 0], reached: s.reached,
         path: s.path || [], done: s.done, noStart: s.noStart, n: s.n, dirtPath: s.dirtPath, margin: s.margin, maxFall: s.maxFall,
-        detail: !!src.detail, sameAs: s.same };
+        detail: !!src.detail, sameAs: s.same, r: s.r, expandedCount: s.x, behind: s.behind, server: s.server };
       var raw = src.pops || [];
       o.pops = raw.map(function (a) {
         if (!o.detail) return { p: [a[0], a[1], a[2]], expanded: a.length === 3 };
@@ -74,8 +85,9 @@
           cand: a[10].map(function (c) { return { d: DIR[c[0]] || c[0], r: RES[c[1]] || c[1], ask: [c[2], c[3], c[4]], at: [c[2], c[5], c[4]], m: c[6], de: c[7] }; }),
           nb: a[11].map(function (n) { return { p: [n[0], n[1], n[2]], m: n[3], g0: n[4], open: n[5] === 1, g: n[6], h: n[7], f: n[8], upd: n[9] === 1 }; }) };
       });
-      o.name = '#' + s.id + ' · tick ' + s.tick + ' · ' + s.kind + ' ' + xyz(o.start) + ' → ' + xyz(o.target) + ' · '
-        + (o.reached ? 'reached' : 'not reached') + ' · ' + o.n + ' points' + (s.same !== undefined ? ' · same as #' + s.same : '') + (o.detail ? '' : ' · positions only');
+      o.name = '#' + s.id + (s.r !== undefined ? ' · recruit ' + s.r : '') + ' · tick ' + s.tick + ' · ' + s.kind + ' ' + xyz(o.start) + ' → ' + xyz(o.target) + ' · '
+        + (o.reached ? 'reached' : 'not reached') + ' · ' + o.n + ' points' + (s.same !== undefined ? ' · same as #' + s.same : '')
+        + (raw.length ? (o.detail ? '' : ' · positions only') : ' · counts only') + (s.server ? ' · ran on the server thread' : '');
       return o;
     });
   }
@@ -121,12 +133,22 @@
   function afterLoad() {
     var sel = $('search'); sel.innerHTML = '';
     W.searches.forEach(function (s, i) { var o = document.createElement('option'); o.value = i; o.textContent = s.name; sel.appendChild(o); });
-    st.s = 0; st.k = 0; st.t = W.run ? W.run.ticks.length - 1 : 0; st.sel = null;
+    st.s = 0; st.k = 0; st.r = 0; st.sel = null;
+    st.t = W.run ? lastTick() : 0;
     if (W.run) {
       var firstDetail = W.searches.findIndex(function (s) { return s.detail && s.kind === 'detour'; });
+      if (firstDetail < 0) firstDetail = W.searches.findIndex(function (s) { return s.pops.length > 0; });
       st.s = firstDetail >= 0 ? firstDetail : 0;
       sel.value = st.s;
     }
+    var focus = $('focus'), g = group();
+    focus.innerHTML = '';
+    if (g) g.forEach(function (r, i) {
+      var o = document.createElement('option'); o.value = i;
+      o.textContent = 'recruit ' + i + ' · ' + r.outcome + (r.reachedTick >= 0 ? ' at tick ' + r.reachedTick : '') + (r.death ? ' · ' + r.death.cause : '');
+      focus.appendChild(o);
+    });
+    $('focuswrap').hidden = !g; $('heatwrap').hidden = !(W.run && W.run.heat);
     $('runctl').hidden = !W.run; $('runpanel').hidden = !W.run;
     syncSliders(); relayoutAll(true);
   }
@@ -143,14 +165,21 @@
   $('tick').addEventListener('input', function (e) { st.t = +e.target.value; render(); });
   $('runplay').addEventListener('click', function () { togglePlay('T'); });
   $('runoverlay').addEventListener('change', function (e) { st.runOverlay = e.target.checked; render(); });
+  $('focus').addEventListener('change', function (e) { st.r = +e.target.value; render(); });
+  $('heat').addEventListener('change', function (e) { st.heat = e.target.checked; render(); });
+  $('runpanel').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-focus]'); if (!b) return;
+    st.r = +b.getAttribute('data-focus'); $('focus').value = st.r; render();
+  });
   $('inspect').addEventListener('click', function () {
-    var id = W.run.ticks[st.t][3];
+    var here = tickAt(focusTicks(), st.t); if (!here) return;
+    var id = here[3];
     if (id >= 0) { st.s = id; st.k = W.searches[id].pops.length - 1; $('search').value = id; syncSliders(); render(); rebuild3dSearch(); }
   });
   $('cut').addEventListener('change', function (e) { st.cut = e.target.checked; update3dCut(); });
   function syncSliders() {
     var s = S(); $('step').max = Math.max(0, s.pops.length - 1); $('step').value = st.k;
-    if (W.run) { $('tick').max = W.run.ticks.length - 1; $('tick').value = st.t; }
+    if (W.run) { $('tick').max = lastTick(); $('tick').value = st.t; }
   }
   function stopPlay() {
     ['S', 'T'].forEach(function (w) { if (st['play' + w]) { clearInterval(st['play' + w]); st['play' + w] = null; } });
@@ -165,8 +194,8 @@
         if (st.k >= S().pops.length - 1) { togglePlay('S'); return; }
         st.k = Math.min(S().pops.length - 1, st.k + +$('speed').value);
       } else {
-        if (st.t >= W.run.ticks.length - 1) { togglePlay('T'); return; }
-        st.t = Math.min(W.run.ticks.length - 1, st.t + +$('runspeed').value);
+        if (st.t >= lastTick()) { togglePlay('T'); return; }
+        st.t = Math.min(lastTick(), st.t + +$('runspeed').value);
       }
       syncSliders(); render();
     }, 60);
@@ -222,6 +251,7 @@
     if (!terrainCache) terrainCache = terrainImage();
     mctx.imageSmoothingEnabled = false;
     mctx.drawImage(terrainCache, 0, 0, W.SX * cell, W.SZ * cell);
+    if (st.heat && W.run && W.run.heat) drawHeat();
     // a thin line at every one-block step, a thick one where the step is deeper than the fall distance
     for (var x = 1; x < W.SX - 1; x++) for (var z = 1; z < W.SZ - 1; z++) {
       var here = standAt(x, z), e = standAt(x + 1, z), so = standAt(z + 1 < W.SZ - 1 ? x : x, z + 1);
@@ -264,19 +294,41 @@
     W.run.plans.forEach(function (p) { if (p[0] <= t) plan = p; });
     return plan;
   }
-  function drawRun() {
-    var R = W.run, t = Math.min(st.t, R.ticks.length - 1);
+  /** Every point any search of the run took off its open set, per column: darker orange where more searching happened. */
+  function drawHeat() {
+    var H = W.run.heat, n = W.SX * W.SZ, max = 1, sum = new Float64Array(n);
+    for (var i = 0; i < n; i++) { sum[i] = (H.follow[i] || 0) + (H.detour[i] || 0); max = Math.max(max, sum[i]); }
+    var lm = Math.log(1 + max);
+    for (var j = 0; j < n; j++) {
+      if (!sum[j]) continue;
+      mctx.fillStyle = 'rgba(234, 88, 12,' + (0.12 + 0.7 * Math.log(1 + sum[j]) / lm).toFixed(3) + ')';
+      mctx.fillRect((j % W.SX) * cell, Math.floor(j / W.SX) * cell, cell, cell);
+    }
+  }
+  function trailOf(ticks, t, every) {
     var trail = [];
-    for (var i = 0; i <= t; i += 2) trail.push([Math.floor(R.ticks[i][0]), 0, Math.floor(R.ticks[i][2])]);
-    line(trail, css('--trail'), 2);
+    for (var i = 0; i <= Math.min(t, ticks.length - 1); i += every) trail.push([Math.floor(ticks[i][0]), 0, Math.floor(ticks[i][2])]);
+    return trail;
+  }
+  function drawRun() {
+    var R = W.run, t = st.t, g = group();
+    if (g) g.forEach(function (r, i) {
+      if (i === st.r || !r.ticks.length) return;
+      line(trailOf(r.ticks, t, 4), outcomeColor(r.outcome), 1);
+      var p = tickAt(r.ticks, t), alive = !r.death || t < r.ticks.length;
+      mctx.fillStyle = alive ? outcomeColor(r.outcome) : css('--bad');
+      mctx.beginPath(); mctx.arc(p[0] * cell, p[2] * cell, Math.max(2, cell * 0.35), 0, Math.PI * 2); mctx.fill();
+    });
+    var ticks = focusTicks();
+    if (!ticks.length) { marker(R.owner, 'O', '--marker'); return; }
+    line(trailOf(ticks, t, 2), css('--trail'), 2);
     var plan = planAt(t);
     if (plan && plan[3].length) {
       line(plan[3], css('--plan'), 2, [5, 3]);
       plan[3].forEach(function (q) { mctx.fillStyle = css('--plan'); mctx.beginPath(); mctx.arc((q[0] + 0.5) * cell, (q[2] + 0.5) * cell, cell * 0.45, 0, Math.PI * 2); mctx.fill(); });
     }
-    var id = R.ticks[t][3];
+    var here = tickAt(ticks, t), id = here[3];
     if (id >= 0 && W.searches[id]) line(W.searches[id].path, css('--walk'), 3);
-    var here = R.ticks[t];
     marker([Math.floor(here[0]), 0, Math.floor(here[2])], 'R', '--recruit');
     marker(R.owner, 'O', '--marker');
   }
@@ -301,9 +353,31 @@
   });
 
   // ---------- the run panel ----------
+  /** For a group run: the counts by outcome, each recruit with a button to follow it, and the run's search cost. */
+  function groupPanel(g) {
+    var R = W.run, counts = {}, h = [];
+    g.forEach(function (r) { counts[r.outcome] = (counts[r.outcome] || 0) + 1; });
+    h.push('<p><b>' + g.length + ' recruits</b>: ' + Object.keys(counts).map(function (k) { return '<span style="color:' + outcomeColor(k) + '">' + esc(k) + ' ' + counts[k] + '</span>'; }).join(', ')
+      + '. Path queue: at most ' + R.queue.max + ' waiting, full for ' + R.queue.fullTicks + ' ticks (' + R.threads + ' path thread' + (R.threads === 1 ? '' : 's') + ').</p>');
+    var all = W.searches, pts = 0, behind = 0, server = 0;
+    all.forEach(function (s) { pts += s.n || 0; behind += s.behind || 0; if (s.server) server++; });
+    h.push('<p>' + all.length + ' searches took ' + pts + ' points off their open sets (' + (all.length ? Math.round(pts / all.length) : 0) + ' a search); '
+      + (pts ? Math.round(100 * behind / pts) : 0) + '% of the points lay behind the search\'s start, away from its target; '
+      + server + ' searches ran on the server thread because the path queue was full.</p>');
+    h.push('<div class="scroll"><table><thead><tr><th>Recruit</th><th>Ended</th><th>Reached at tick</th><th>Closest to owner</th><th>Death</th><th></th></tr></thead><tbody>');
+    g.forEach(function (r, i) {
+      h.push('<tr' + (i === st.r ? ' style="font-weight:600"' : '') + '><td>' + i + '</td><td style="color:' + outcomeColor(r.outcome) + '">' + esc(r.outcome) + '</td><td class="num">'
+        + (r.reachedTick >= 0 ? r.reachedTick : '') + '</td><td class="num">' + fmt(r.closest) + '</td><td>' + (r.death ? esc(r.death.cause) + ' at tick ' + r.death.tick : '')
+        + '</td><td><button type="button" data-focus="' + i + '">Follow</button></td></tr>');
+    });
+    h.push('</tbody></table></div>');
+    return h.join('');
+  }
   function runPanel() {
     if (!W.run) return;
-    var R = W.run, t = Math.min(st.t, R.ticks.length - 1), here = R.ticks[t], f = here[4];
+    var R = W.run, g = group(), ticks = focusTicks(), t = st.t;
+    if (!ticks.length) { $('runpanel').innerHTML = g ? groupPanel(g) : ''; return; }
+    var here = tickAt(ticks, t), f = here[4];
     var states = [];
     if (f & 1) states.push('following'); else states.push('not following (goal stopped)');
     if (f & 4) states.push('<span class="bad">its path is still being searched: no walk input this tick</span>');
@@ -312,11 +386,14 @@
     if (f & 16) states.push('on the ground');
     var plan = planAt(t), id = here[3];
     var h = [];
-    h.push('<div class="kv"><span>Tick</span><b>' + t + ' of ' + (R.ticks.length - 1) + '</b><span>Result</span><b>' + esc(R.outcome) + '</b></div>');
-    h.push('<p>Recruit R at ' + fmt(here[0]) + ', ' + fmt(here[1]) + ', ' + fmt(here[2]) + ': ' + states.join('; ') + '.</p>');
+    if (f & 32) states.push('has a target to fight');
+    if (g && t >= ticks.length) states = [g[st.r].death ? '<span class="bad">dead since tick ' + g[st.r].death.tick + ' (' + esc(g[st.r].death.cause) + ')</span>' : 'no longer recorded'];
+    h.push('<div class="kv"><span>Tick</span><b>' + t + ' of ' + lastTick() + '</b><span>Result</span><b>' + esc(R.outcome) + '</b></div>');
+    h.push('<p>Recruit R' + (g ? ' (recruit ' + st.r + ')' : '') + ' at ' + fmt(here[0]) + ', ' + fmt(here[1]) + ', ' + fmt(here[2]) + ': ' + states.join('; ') + '.</p>');
     h.push('<p>Walking: ' + (id >= 0 ? 'the path from search <b>#' + id + '</b> (' + (W.searches[id].reached ? 'reaches its target' : 'does not reach its target') + ', ' + W.searches[id].path.length + ' points after cut-backs were applied later)' : 'no path') + '.</p>');
     h.push('<p>Detour plan for its owner: ' + (plan ? '<b>' + esc(plan[1]) + '</b> after ' + plan[2] + ' searches' + (plan[3].length ? ', ' + plan[3].length + ' waypoints' : '') : 'none') + '.</p>');
     h.push('<p class="dim">' + esc(R.message || '') + '</p>');
+    if (g) h.push(groupPanel(g));
     $('runpanel').innerHTML = h.join('');
     $('tickno').textContent = 'tick ' + t;
   }
@@ -364,7 +441,7 @@
   }
 
   // ---------- block checks ----------
-  function selected() { if (st.sel) return st.sel; var p = P(); return p ? [p.p[0], p.p[2]] : [32, 32]; }
+  function selected() { if (st.sel) return st.sel; var p = P(); return p ? [p.p[0], p.p[2]] : [W.SX >> 1, W.SZ >> 1]; }
   function popInColumn(x, z) {
     var list = S().byColumn.get(x + ',' + z);
     if (!list) return null;
@@ -379,7 +456,7 @@
     var c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); return c;
   }
   function drawColumn() {
-    var at = selected(), x = at[0], z = at[1], u = 14;
+    var at = selected(), x = at[0], z = at[1], u = Math.max(5, Math.min(14, Math.floor(640 / W.SY)));
     var c = sizeCanvas($('column'), 160, W.SY * u + 4);
     var pi = popInColumn(x, z), p = pi === null ? null : S().pops[pi];
     c.font = '10px JetBrains Mono, monospace'; c.textBaseline = 'middle';
@@ -425,9 +502,10 @@
       : 'The ring check is kept for fully recorded points with edge care on. The numbers are ground height minus these feet.';
   }
   function drawSection(cv, along, fixed) {
-    var w = Math.min(cv.parentElement.clientWidth, 640), u = Math.max(4, Math.floor(w / 64));
-    var c = sizeCanvas(cv, u * 64, u * W.SY), s = S();
-    for (var i = 0; i < 64; i++) for (var y = 0; y < W.SY; y++) {
+    var n = along === 'x' ? W.SX : W.SZ;
+    var w = Math.min(cv.parentElement.clientWidth, 640), u = Math.max(4, Math.floor(w / n));
+    var c = sizeCanvas(cv, u * n, u * W.SY), s = S();
+    for (var i = 0; i < n; i++) for (var y = 0; y < W.SY; y++) {
       c.fillStyle = blockColor(along === 'x' ? blockAt(i, y, fixed) : blockAt(fixed, y, i)); c.fillRect(i * u, (W.SY - 1 - y) * u, u, u);
     }
     for (var k = 0; k <= Math.min(st.k, s.pops.length - 1); k++) {
@@ -442,8 +520,8 @@
       var a = along === 'x' ? q[0] : q[2];
       c.beginPath(); c.arc((a + 0.5) * u, (W.SY - 1 - q[1] + 0.5) * u, u * 0.35, 0, Math.PI * 2); c.fill();
     });
-    if (W.run && st.runOverlay) {
-      var here = W.run.ticks[Math.min(st.t, W.run.ticks.length - 1)];
+    var here = W.run && st.runOverlay ? tickAt(focusTicks(), st.t) : null;
+    if (here) {
       if (Math.floor(along === 'x' ? here[2] : here[0]) === fixed) {
         var a2 = along === 'x' ? here[0] : here[2];
         c.fillStyle = css('--recruit'); c.fillRect((a2 - 0.3) * u, (W.SY - here[1] - 1.8) * u, u * 0.6, u * 1.8);
@@ -490,6 +568,9 @@
   function rebuild3dWorld() {
     if (!three) return;
     var THREE = three.THREE; clearGroup(three.world);
+    // Aim at the arena's middle, at its ground, from far enough to see all of it.
+    three.target.set(W.SX / 2, (W.minStand + W.maxStand) / 2, W.SZ / 2);
+    three.dist = Math.max(60, Math.max(W.SX, W.SZ) * 1.45);
     var solids = [], waters = [];
     for (var x = 1; x < W.SX - 1; x++) for (var z = 1; z < W.SZ - 1; z++) for (var y = 0; y < W.SY; y++) {
       var c = blockAt(x, y, z);
@@ -541,14 +622,17 @@
     if (!three) return;
     clearGroup(three.run);
     if (!W.run || !st.runOverlay) return;
-    var R = W.run, t = Math.min(st.t, R.ticks.length - 1), THREE = three.THREE, trail = [];
-    for (var i = 0; i <= t; i += 2) trail.push([R.ticks[i][0] - 0.5, R.ticks[i][1], R.ticks[i][2] - 0.5]);
+    var R = W.run, t = st.t, THREE = three.THREE, trail = [], ticks = focusTicks(), g = group();
+    for (var i = 0; i <= Math.min(t, ticks.length - 1); i += 2) trail.push([ticks[i][0] - 0.5, ticks[i][1], ticks[i][2] - 0.5]);
     if (trail.length > 1) three.run.add(polyline3(trail, '--trail', 0.1));
     var plan = planAt(t);
     if (plan && plan[3].length > 1) three.run.add(polyline3(plan[3], '--plan', 0.6));
-    var here = R.ticks[t];
-    var body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), new THREE.MeshLambertMaterial({ color: color3('--recruit') }));
-    body.position.set(here[0], here[1] + 0.9, here[2]); three.run.add(body);
+    (g || [{ ticks: ticks }]).forEach(function (r, j) {
+      if (!r.ticks.length || (r.death && t >= r.ticks.length)) return;
+      var p = tickAt(r.ticks, t), focused = !g || j === st.r;
+      var body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), new THREE.MeshLambertMaterial({ color: focused ? color3('--recruit') : color3(r.outcome === 'reached' ? '--good' : '--muted') }));
+      body.position.set(p[0], p[1] + 0.9, p[2]); three.run.add(body);
+    });
     var owner = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), new THREE.MeshLambertMaterial({ color: color3('--marker') }));
     owner.position.set(R.owner[0] + 0.5, R.owner[1] + 0.9, R.owner[2] + 0.5); three.run.add(owner);
   }

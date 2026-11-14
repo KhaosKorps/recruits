@@ -47,11 +47,20 @@ import java.util.zip.GZIPOutputStream;
  */
 final class RunRecorder implements SearchTracer.Sink, TracingPathfinders.Pairing {
 
-    private static final Map<java.util.UUID, RunRecorder> BY_RECRUIT = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<java.util.UUID, SearchTracer.Sink> BY_RECRUIT = new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** The recorder for a recruit's run, so the detour planner's searches for it are recorded too; null when it has none. */
-    static RunRecorder recorderFor(net.minecraft.world.entity.Mob mob) {
+    /** Where a recruit's searches are recorded, so the detour planner's searches for it are recorded too; null when nowhere. */
+    static SearchTracer.Sink recorderFor(net.minecraft.world.entity.Mob mob) {
         return BY_RECRUIT.get(mob.getUUID());
+    }
+
+    /** Records {@code mob}'s searches into {@code sink} until {@link #forget}; used by the group recorder too. */
+    static void recordInto(net.minecraft.world.entity.Mob mob, SearchTracer.Sink sink) {
+        BY_RECRUIT.put(mob.getUUID(), sink);
+    }
+
+    static void forget(net.minecraft.world.entity.Mob mob) {
+        BY_RECRUIT.remove(mob.getUUID());
     }
 
     static final int DETAIL_LIMIT = 60;
@@ -94,7 +103,7 @@ final class RunRecorder implements SearchTracer.Sink, TracingPathfinders.Pairing
             this.budget = budgetField.getInt(navigation);
             Field finder = AsyncPathNavigation.class.getDeclaredField("pathFinder");
             finder.setAccessible(true);
-            BY_RECRUIT.put(this.recruit.getUUID(), this);
+            recordInto(this.recruit, this);
             TracingDetourEvaluator.fillThePool();
             finder.set(navigation, RecruitsServerConfig.UseAsyncPathfinding.get()
                     ? new TracingPathfinders.Async(this.budget, this, this, this.helper.getLevel())
@@ -178,7 +187,7 @@ final class RunRecorder implements SearchTracer.Sink, TracingPathfinders.Pairing
     void finish(String outcome, String message) {
         if (this.written) return;
         this.written = true;
-        BY_RECRUIT.remove(this.recruit.getUUID());
+        forget(this.recruit);
         java.nio.file.Path file = java.nio.file.Path.of("runs", this.name + ".json.gz").toAbsolutePath();
         try {
             Files.createDirectories(file.getParent());
@@ -281,10 +290,15 @@ final class RunRecorder implements SearchTracer.Sink, TracingPathfinders.Pairing
 
     /** Every block of a 64 x 24 x 64 arena, x fastest, then z, then y: '#' solid, 'w' water, 'l' lava, '.' open. */
     static String blocks(GameTestHelper helper) {
-        StringBuilder out = new StringBuilder(64 * 24 * 64);
-        for (int y = 0; y < 24; y++) {
-            for (int z = 0; z < 64; z++) {
-                for (int x = 0; x < 64; x++) {
+        return blocks(helper, 64, 24, 64);
+    }
+
+    /** Every block of an arena of the given size, x fastest, then z, then y: '#' solid, 'w' water, 'l' lava, '.' open. */
+    static String blocks(GameTestHelper helper, int sizeX, int sizeY, int sizeZ) {
+        StringBuilder out = new StringBuilder(sizeX * sizeY * sizeZ);
+        for (int y = 0; y < sizeY; y++) {
+            for (int z = 0; z < sizeZ; z++) {
+                for (int x = 0; x < sizeX; x++) {
                     BlockPos pos = helper.absolutePos(new BlockPos(x, y, z));
                     BlockState state = helper.getLevel().getBlockState(pos);
                     if (state.getFluidState().is(FluidTags.LAVA)) out.append('l');

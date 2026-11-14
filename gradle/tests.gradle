@@ -96,6 +96,9 @@ minecraft {
             workingDirectory project.file('build/gametest-run')
             property 'forge.logging.console.level', 'info'
             property 'forge.enabledGameTestNamespaces', 'recruits'
+            // The long group tests on the captured ravine (CapturedRavineGroupTests) run only when asked:
+            // gradlew runGameTestServer -PgroupTests=pilot (or =all).
+            property 'khaoskorps.groupTests', (project.findProperty('groupTests') ?: '').toString()
             mods {
                 recruits {
                     source sourceSets.main

@@ -263,10 +263,20 @@ for f in sorted(RUNS.glob("*.json.gz")):
         if srch["reached"]:
             reached[srch["kind"]] = reached.get(srch["kind"], 0) + 1
     ends = [pl for pl in d["plans"] if pl[1] in ("FOUND", "FAILED")]
+    group = d.get("recruits") or []
+    outcomes = {}
+    for member in group:
+        outcomes[member["outcome"]] = outcomes.get(member["outcome"], 0) + 1
+    searches = d["searches"]
     runs.append({"test": d["test"], "file": "runs/" + f.name.replace(".json.gz", ".json"),"outcome": d["outcome"], "message": d["message"], "seed": d["seed"],
-                 "fall": d["fallDistance"], "ticks": len(d["ticks"]), "follow": kinds.get("follow", 0), "detour": kinds.get("detour", 0),
+                 "fall": d["fallDistance"], "ticks": max([len(m["ticks"]) for m in group] or [len(d["ticks"])]),
+                 "follow": kinds.get("follow", 0), "detour": kinds.get("detour", 0),
                  "followReached": reached.get("follow", 0), "detourReached": reached.get("detour", 0), "plans": len(ends),
-                 "plansFound": sum(1 for pl in ends if pl[1] == "FOUND"), "end": d["ticks"][-1][:3]})
+                 "plansFound": sum(1 for pl in ends if pl[1] == "FOUND"), "end": d["ticks"][-1][:3] if d["ticks"] else [0, 0, 0],
+                 "recruits": len(group) or 1, "outcomes": outcomes, "searches": len(searches),
+                 "points": sum(s.get("n", 0) for s in searches), "behind": sum(s.get("behind", 0) for s in searches),
+                 "same": sum(1 for s in searches if "same" in s), "server": sum(1 for s in searches if s.get("server")),
+                 "queue": d.get("queue")})
 log = LOG.read_text(encoding="utf-8", errors="replace")
 req = re.search(r"All (\d+) required tests passed", log)
 reqfail = re.search(r"(\d+) required tests failed", log)
@@ -275,13 +285,30 @@ failures = {}
 for m in re.finditer(r"\]: (\S+) failed! (.*)", log):
     failures[m.group(1)] = m.group(2)[:300]
 index = json.dumps({"runs": runs}, separators=(",", ":")).replace("</", "<\\/")
+def short_name(test):
+    return test.replace("aFollowerGoesRoundARoughRavineAt", "").replace("aGroupFollowsAcrossTheCapturedRavine_", "captured ravine, ")
+
+
+def outcome_text(r):
+    if not r["outcomes"]:
+        return "1"
+    return f'{r["recruits"]}: ' + ", ".join(f"{k} {v}" for k, v in sorted(r["outcomes"].items()))
+
+
 run_rows = "".join(
-    f'<tr><td>{html.escape(r["test"].replace("aFollowerGoesRoundARoughRavineAt", ""))}</td><td>{r["seed"]}</td><td>{r["fall"]}</td>'
+    f'<tr><td>{html.escape(short_name(r["test"]))}</td><td>{html.escape(outcome_text(r))}</td><td>{r["seed"]}</td><td>{r["fall"]}</td>'
     f'<td class="{"good" if r["outcome"] == "passed" else "bad"}">{html.escape(r["outcome"])}</td><td class="num">{r["ticks"]}</td>'
     f'<td class="num">{r["follow"]} ({r["followReached"]} reached)</td><td class="num">{r["detour"]} ({r["detourReached"]} reached)</td>'
     f'<td class="num">{r["plansFound"]} of {r["plans"]} found</td><td class="num">({r["end"][0]:.0f}, {r["end"][1]:.0f}, {r["end"][2]:.0f})</td>'
     f'<td><button type="button" data-open-run="{html.escape(r["file"])}">Open</button></td></tr>' for r in runs)
-other_fail = "".join(f'<li><code>{html.escape(n)}</code>: {html.escape(m)}</li>' for n, m in failures.items() if "RoughRavine" not in n)
+cost_rows = "".join(
+    f'<tr><td>{html.escape(short_name(r["test"]))}</td><td class="num">{r["recruits"]}</td><td class="num">{r["searches"]}</td>'
+    f'<td class="num">{r["points"]}</td><td class="num">{round(r["points"] / r["searches"]) if r["searches"] else 0}</td>'
+    f'<td class="num">{round(100 * r["behind"] / r["points"]) if r["points"] else 0}%</td>'
+    f'<td class="num">{round(100 * r["same"] / r["searches"]) if r["searches"] else 0}%</td><td class="num">{r["server"]}</td>'
+    f'<td class="num">{(r["queue"] or {}).get("fullTicks", "")}</td></tr>' for r in runs)
+other_fail = "".join(f'<li><code>{html.escape(n)}</code>: {html.escape(m)}</li>' for n, m in failures.items()
+                     if "RoughRavine" not in n and "CapturedRavine_" not in n)
 summary_line = (f'{req.group(1)} required tests passed' if req else (f'{reqfail.group(1)} required tests failed' if reqfail else 'no summary found')) + (f', {opt.group(1)} optional tests failed' if opt else '')
 
 page = f"""<title>Recruit Pathfinding Visualizer</title>
@@ -382,10 +409,16 @@ nav.toc a {{ color: var(--accent); }}
 
 <section id="results">
   <h2>Test results</h2>
-  <p>The last full test run, on a fresh flat test world, commit {COMMIT}: <b>{summary_line}</b>. Every rough-ravine test is recorded whole; open one to replay it below.</p>
+  <p>The last full test run, on a fresh flat test world, commit {COMMIT}: <b>{summary_line}</b>. Every rough-ravine test and every group test is recorded whole; open one to replay it below.</p>
   <div class="scroll"><table>
-    <thead><tr><th>Rough-ravine test</th><th>Seed</th><th>Fall distance</th><th>Result</th><th>Ticks</th><th>Follow searches</th><th>Detour searches</th><th>Detour plans</th><th>Where it ended</th><th></th></tr></thead>
+    <thead><tr><th>Recorded test</th><th>Recruits: how they ended</th><th>Seed</th><th>Fall distance</th><th>Result</th><th>Ticks</th><th>Follow searches</th><th>Detour searches</th><th>Detour plans</th><th>Where recruit 0 ended</th><th></th></tr></thead>
     <tbody>{run_rows}</tbody>
+  </table></div>
+  <h3>What the searching cost</h3>
+  <p>Every search's points taken off its open set: the work each search did. "Behind the start" are points on the far side of the search's start from its target, the obvious wrong direction. "Identical repeats" are searches with the same start, target, result and size as an earlier one in the run. A search runs on the server thread when the path worker's queue is full, which slows the whole server.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Recorded test</th><th>Recruits</th><th>Searches</th><th>Points taken</th><th>Points a search</th><th>Behind the start</th><th>Identical repeats</th><th>On the server thread</th><th>Queue full (ticks)</th></tr></thead>
+    <tbody>{cost_rows}</tbody>
   </table></div>
   <details><summary>The other optional test that failed</summary><ul style="margin:8px 0;padding:0 16px 0 32px">{other_fail}</ul></details>
 </section>
@@ -412,6 +445,8 @@ nav.toc a {{ color: var(--accent); }}
     <span id="tickno" class="dim"></span>
     <label>Speed <select id="runspeed"><option value="1">1</option><option value="5" selected>5</option><option value="20">20</option></select></label>
     <label><input id="runoverlay" type="checkbox" checked> trail, plan and walked path</label>
+    <label id="focuswrap" hidden>Follow <select id="focus" aria-label="Recruit to follow"></select></label>
+    <label id="heatwrap" hidden><input id="heat" type="checkbox"> where all searches looked</label>
     <button id="inspect" type="button">Open the search walked now</button>
   </div>
   <div id="runpanel" class="runpanel" hidden aria-live="polite"></div>

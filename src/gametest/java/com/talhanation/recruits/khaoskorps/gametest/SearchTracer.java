@@ -34,6 +34,15 @@ final class SearchTracer {
         /** Whether this search, now that its start and target are known, records full detail. */
         boolean detail(SearchRecord record);
 
+        /** Whether this search keeps its points at all; without them it keeps only its counts. Asked with detail. */
+        default boolean keepPoints(SearchRecord record) {
+            return true;
+        }
+
+        /** Every point the search took off its open set, kept or not: for counts over many searches. Any thread. */
+        default void point(SearchRecord record, int x, int y, int z, boolean expanded) {
+        }
+
         void finished(SearchRecord record);
     }
 
@@ -48,6 +57,12 @@ final class SearchTracer {
         int maxFall;
         /** Whether pops carry candidates, neighbours and the edge ring; else positions only. */
         boolean detail;
+        /** Whether pops are kept at all; else only the counts below. */
+        boolean keepPoints = true;
+        /** Points taken off the open set, of them expanded, and of those behind the start (more than 90 degrees off the line to the target). */
+        int popCount, expandedCount, behindCount;
+        /** Whether the search ran on the server thread: with async searches on, the path worker's queue was full. */
+        volatile boolean onServerThread;
         final List<Pop> pops = new ArrayList<>();
         /** The path the search returned, when the path finder that ran it could note it. */
         volatile Path path;
@@ -125,6 +140,7 @@ final class SearchTracer {
         this.record = null;
         this.current = null;
         this.decided = false;
+        this.expandedHere.clear();
         if (sink == null) return;
         SearchRecord next = new SearchRecord();
         next.kind = kind;
@@ -149,16 +165,18 @@ final class SearchTracer {
     boolean beforeNeighbours(BlockGetter level, Node node) {
         if (this.record == null) return false;
         if (!this.decided) {
-            this.record.detail = this.sink.detail(this.record);
+            this.record.keepPoints = this.sink.keepPoints(this.record);
+            this.record.detail = this.record.keepPoints && this.sink.detail(this.record);
             this.decided = true;
         }
         this.settlePrevious();
         for (int[] target : this.record.targets) {
             if (Math.abs(node.x - target[0]) + Math.abs(node.y - target[1]) + Math.abs(node.z - target[2]) <= 1) this.record.reachedByPop = true;
         }
+        this.count(node, true);
         if (!this.record.detail) {
             this.current = null;
-            this.record.pops.add(new Pop(node, "", 0, 0));
+            if (this.record.keepPoints) this.record.pops.add(new Pop(node, "", 0, 0));
             return false;
         }
         int margin = this.record.margin;
@@ -211,22 +229,29 @@ final class SearchTracer {
     void done(Iterable<Node> nodes) {
         this.settlePrevious();
         if (this.record != null) {
-            java.util.Set<Long> seen = new java.util.HashSet<>();
-            for (Pop pop : this.record.pops) seen.add(net.minecraft.core.BlockPos.asLong(pop.x, pop.y, pop.z));
+            // The path workers inherit the server's thread group, so ask the server whether this is its own thread.
+            net.minecraft.server.MinecraftServer server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+            this.record.onServerThread = server != null && server.isSameThread();
+            // A point is closed when taken off the open set; one closed and never expanded is the one
+            // that reached the target or one beyond the range, as the class comment says.
             List<Node> unexpanded = new ArrayList<>();
             for (Node node : nodes) {
-                if (node.closed && !seen.contains(net.minecraft.core.BlockPos.asLong(node.x, node.y, node.z))) unexpanded.add(node);
+                if (node.closed && !this.expandedHere.contains(net.minecraft.core.BlockPos.asLong(node.x, node.y, node.z))) unexpanded.add(node);
             }
             unexpanded.sort((a, b) -> Float.compare(a.f, b.f));
             for (Node node : unexpanded) {
-                Pop pop = new Pop(node, "", 0, 0);
-                pop.expanded = false;
-                this.record.pops.add(pop);
+                this.count(node, false);
+                if (this.record.keepPoints) {
+                    Pop pop = new Pop(node, "", 0, 0);
+                    pop.expanded = false;
+                    this.record.pops.add(pop);
+                }
                 for (int[] target : this.record.targets) {
                     if (Math.abs(node.x - target[0]) + Math.abs(node.y - target[1]) + Math.abs(node.z - target[2]) <= 1) this.record.reachedByPop = true;
                 }
             }
         }
+        this.expandedHere.clear();
         SearchRecord finished = this.record;
         Sink to = this.sink;
         this.record = null;
@@ -235,6 +260,25 @@ final class SearchTracer {
             finished.finished = true;
             to.finished(finished);
         }
+    }
+
+    /** The points this search has expanded, to tell the closed-but-unexpanded ones apart in done(). */
+    private final java.util.Set<Long> expandedHere = new java.util.HashSet<>();
+
+    /** Counts a point taken off the open set and hands it to the sink. */
+    private void count(Node node, boolean expanded) {
+        SearchRecord r = this.record;
+        r.popCount++;
+        if (expanded) {
+            r.expandedCount++;
+            this.expandedHere.add(net.minecraft.core.BlockPos.asLong(node.x, node.y, node.z));
+        }
+        if (r.start != null && !r.targets.isEmpty()) {
+            int[] t = r.targets.get(0);
+            long towardTarget = (long) (node.x - r.start[0]) * (t[0] - r.start[0]) + (long) (node.z - r.start[2]) * (t[2] - r.start[2]);
+            if (towardTarget < 0) r.behindCount++;
+        }
+        this.sink.point(r, node.x, node.y, node.z, expanded);
     }
 
     /** The search has moved on (or ended): how did it update the last point's neighbours? */

@@ -36,7 +36,8 @@ import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 @PrefixGameTestTemplate(false)
 public class CapturedRavineGameTests {
 
-    private static final String RAVINE = "khaoskorps_ravine_1";
+    static final String RAVINE_TEMPLATE = "khaoskorps_ravine_1";
+    private static final String RAVINE = RAVINE_TEMPLATE;
     private static final int SIZE_X = 96;
     private static final int SIZE_Z = 48;
     private static final int TOP = 76;
@@ -55,7 +56,7 @@ public class CapturedRavineGameTests {
     }
 
     /** Barriers on the arena's border columns, from the ground up, so nobody walks off the captured box. */
-    private static void fenceIn(GameTestHelper helper) {
+    static void fenceIn(GameTestHelper helper) {
         for (int i = 0; i < Math.max(SIZE_X, SIZE_Z); i++) {
             if (i < SIZE_X) {
                 wall(helper, i, 0);

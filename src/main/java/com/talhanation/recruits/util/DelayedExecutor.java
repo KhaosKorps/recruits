@@ -1,13 +1,13 @@
 package com.talhanation.recruits.util;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
+/**
+ * KhaosKorps fork: was a ScheduledExecutorService, whose thread kept the server's process running
+ * after it stopped and ran tasks off the server thread. Tasks now run on the server thread at the
+ * end of the tick they are due (ServerTickTasks).
+ */
 public class DelayedExecutor {
-    private static final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     public static void runLater(Runnable task, long delayMillis) {
-        scheduler.schedule(task, delayMillis, TimeUnit.MILLISECONDS);
+        com.talhanation.recruits.khaoskorps.ServerTickTasks.runLater(task, delayMillis); // KhaosKorps fork
     }
 }

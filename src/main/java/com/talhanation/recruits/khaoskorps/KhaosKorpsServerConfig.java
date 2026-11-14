@@ -42,6 +42,8 @@ public final class KhaosKorpsServerConfig {
     public static final ForgeConfigSpec.IntValue EdgeMarginBlocks;
     public static final ForgeConfigSpec.DoubleValue EdgeCarefulSpeed;
     public static final ForgeConfigSpec.IntValue DeadEndSearchNodes;
+    public static final ForgeConfigSpec.DoubleValue DropCostPerBlock;
+    public static final ForgeConfigSpec.DoubleValue UnreachableDepthWeight;
     public static final ForgeConfigSpec.BooleanValue WaitWhenOwnerUnreachable;
     public static final ForgeConfigSpec.BooleanValue DetourSearch;
     public static final ForgeConfigSpec.DoubleValue MovementSpeedMultiplier;
@@ -136,10 +138,21 @@ public final class KhaosKorpsServerConfig {
                         "searches the landing area for a way out, up to this many walkable spots; an area that big, or with its",
                         "owner in it, isn't a dead end. 0 turns the check off.")
                 .defineInRange("DeadEndSearchNodes", d.deadEndSearchNodes(), 0, 1024);
+        DropCostPerBlock = builder
+                .comment("With EdgeMargin on, while following: extra search cost for each block of a drop of two or more,",
+                        "so paths prefer stairs and slopes and avoid falls they don't need. 0 is off (the default). Works",
+                        "with UseAsyncPathfinding on only.")
+                .defineInRange("DropCostPerBlock", d.dropCostPerBlock(), 0.0, 16.0);
         WaitWhenOwnerUnreachable = builder
                 .comment("When no path reaches the owner and the best one ends at a drop, stop short of the edge and wait",
                         "instead of crowding it. On by default.")
                 .define("WaitWhenOwnerUnreachable", d.waitWhenOwnerUnreachable());
+        UnreachableDepthWeight = builder
+                .comment("With WaitWhenOwnerUnreachable on: where a following recruit's path ends when its owner can't be",
+                        "reached, each block below both the recruit's starting height and its owner's counts as this many",
+                        "blocks of extra distance, so it waits up on the rim instead of going down into a ravine just because",
+                        "the bottom is nearer its owner in a straight line. 0 is off.")
+                .defineInRange("UnreachableDepthWeight", d.unreachableDepthWeight(), 0.0, 16.0);
         DetourSearch = builder
                 .comment("When following recruits have been stuck about 3 seconds with no path to their owner, and the owner",
                         "is on the ground, plan a way round in steps of up to 16 blocks, at most 4 times the straight-line",
@@ -219,8 +232,8 @@ public final class KhaosKorpsServerConfig {
                 FollowMaxPathLength.get(), SearchNodesPerBlock.get(),
                 DirtPathPreference.get(),
                 KeepWalkingWhileRepathing.get(), StaggerFollowRepaths.get(),
-                EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(), DeadEndSearchNodes.get(),
-                WaitWhenOwnerUnreachable.get(), DetourSearch.get(),
+                EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(), DeadEndSearchNodes.get(), DropCostPerBlock.get(),
+                WaitWhenOwnerUnreachable.get(), UnreachableDepthWeight.get(), DetourSearch.get(),
                 MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(),
                 CreepersTargetRecruits.get(),
                 FireCheckTicks.get(), TntCheckTicks.get(), VillageDefenceCheckTicks.get(),

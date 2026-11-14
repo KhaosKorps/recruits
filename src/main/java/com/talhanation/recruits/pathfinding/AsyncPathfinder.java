@@ -107,6 +107,8 @@ public class AsyncPathfinder extends PathFinder {
         int i = 0;
         List<Map.Entry<Target, BlockPos>> entryList = Lists.newArrayListWithExpectedSize(p_164719_.size()); // Paper - optimize collection
         int j = (int) ((float) this.maxVisitedNodes * p_164722_);
+        Node reachedBy = null; // KhaosKorps fork
+        float dropCost = p_164717_ instanceof com.talhanation.recruits.entities.ai.navigation.RecruitsPathNodeEvaluator recruits ? recruits.dropCostPerBlock() : 0.0F; // KhaosKorps fork: DropCostPerBlock
 
         while (!openSet.isEmpty()) {
             ++i;
@@ -128,6 +130,7 @@ public class AsyncPathfinder extends PathFinder {
             }
 
             if (!entryList.isEmpty()) {
+                reachedBy = node; // KhaosKorps fork: the node that reached the target, for DropCostPerBlock
                 break;
             }
 
@@ -139,6 +142,7 @@ public class AsyncPathfinder extends PathFinder {
                     float f = this.distance(node, node1);
                     node1.walkedDistance = node.walkedDistance + f;
                     float f1 = node.g + f + node1.costMalus;
+                    if (dropCost > 0.0F && node.y - node1.y >= 2) f1 += dropCost * (node.y - node1.y); // KhaosKorps fork
                     if (node1.walkedDistance < p_164720_ && (!node1.inOpenSet() || f1 < node1.g)) {
                         node1.cameFrom = node;
                         node1.g = f1;
@@ -162,7 +166,10 @@ public class AsyncPathfinder extends PathFinder {
                 : Comparator.comparingDouble(Path::getDistToTarget).thenComparingInt(Path::getNodeCount);
 
         for (Map.Entry<Target, BlockPos> entry : entryListIsEmpty ? p_164719_ : entryList) {
-            Path path = this.reconstructPath(entry.getKey().getBestNode(), entry.getValue(), !entryListIsEmpty);
+            // KhaosKorps fork: with DropCostPerBlock on, a reached path is rebuilt from the node that reached the target, which
+            // the costs chose, not from the node nearest the target by straight distance (it can come by a costed drop).
+            Node end = dropCost > 0.0F && !entryListIsEmpty && reachedBy != null ? reachedBy : entry.getKey().getBestNode();
+            Path path = this.reconstructPath(end, entry.getValue(), !entryListIsEmpty);
             if (best == null || comparator.compare(path, best) < 0) {
                 best = path;
             }

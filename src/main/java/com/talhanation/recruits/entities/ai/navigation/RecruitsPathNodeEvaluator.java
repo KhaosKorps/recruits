@@ -52,6 +52,7 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     private final LongOpenHashSet edgeCostedNodes = new LongOpenHashSet();
     // KhaosKorps fork: the dead-end check for this search (0 is off), its answers by landing spot, and the search's targets.
     private int deadEndNodes;
+    private float dropCostPerBlock; // KhaosKorps fork: DropCostPerBlock for this search, 0 unless edge care applies
     private boolean checkingDeadEnd;
     private final it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap deadEnds = new it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap();
     private final java.util.List<BlockPos> goals = new java.util.ArrayList<>();
@@ -77,6 +78,7 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
         this.edgeMargin = settings.edgeMargin() && this.edgeCareApplies(mob) ? settings.edgeMarginBlocks() : 0; // KhaosKorps fork
         this.edgeMaxFall = mob.getMaxFallDistance(); // KhaosKorps fork
         this.deadEndNodes = this.edgeMargin > 0 ? settings.deadEndSearchNodes() : 0; // KhaosKorps fork: only where edge care applies
+        this.dropCostPerBlock = this.edgeMargin > 0 ? (float) settings.dropCostPerBlock() : 0.0F; // KhaosKorps fork
         this.dirtPath = settings.dirtPathPreference(); // KhaosKorps fork
         if(mob.isVehicle()){
             this.entityHeight = Mth.floor(mob.getBbHeight() + (float) getEntityHeight());
@@ -552,6 +554,11 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
             }
         }
         return true;
+    }
+
+    /** KhaosKorps fork: the extra search cost per block of a drop of two or more, for this search; read by the path finder. */
+    public float dropCostPerBlock() {
+        return this.dropCostPerBlock;
     }
 
     /** KhaosKorps fork: whether a spot is within a block of one of the search's targets. */

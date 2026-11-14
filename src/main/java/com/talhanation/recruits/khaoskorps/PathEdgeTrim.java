@@ -74,6 +74,37 @@ public final class PathEdgeTrim {
     }
 
     /**
+     * How many of the path's points to keep when it can't reach its target, so it doesn't end deep
+     * below both where the mob started and where its target is just because that spot is nearer the
+     * target in a straight line, such as the floor of a ravine its owner stands across. Each point
+     * scores its distance to the target plus {@code depthWeight} for every block it lies below the
+     * lower of the path's first point and the target; the path ends at the best, the earliest of
+     * equals. Going down toward a target that is itself lower costs nothing extra, so a path that only
+     * fell short of an owner below, such as down a long staircase, is kept. A path that reaches its
+     * target, or a weight of 0, keeps every point.
+     */
+    public static int pointsToKeepForDepth(Path path, double depthWeight) {
+        int count = path.getNodeCount();
+        if (count == 0 || path.canReach() || depthWeight <= 0) return count;
+        BlockPos target = path.getTarget();
+        int floorY = Math.min(path.getNode(0).y, target.getY());
+        int best = 0;
+        double bestScore = Double.MAX_VALUE;
+        for (int i = 0; i < count; i++) {
+            Node node = path.getNode(i);
+            double dx = node.x - target.getX();
+            double dy = node.y - target.getY();
+            double dz = node.z - target.getZ();
+            double score = Math.sqrt(dx * dx + dy * dy + dz * dz) + depthWeight * Math.max(0, floorY - node.y);
+            if (score < bestScore) {
+                best = i;
+                bestScore = score;
+            }
+        }
+        return best + 1;
+    }
+
+    /**
      * Whether either of the two columns from {@code end} along the straight line toward
      * {@code target} is a dangerous drop. The line is followed as it runs, so with the target ahead
      * and a little to one side the columns checked lie ahead, not diagonally beside a trail.

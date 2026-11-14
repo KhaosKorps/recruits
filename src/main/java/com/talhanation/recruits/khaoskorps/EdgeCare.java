@@ -10,8 +10,10 @@ package com.talhanation.recruits.khaoskorps;
  *                        reach the owner; 0 is off
  * @param carefulSpeed    the fraction of its speed a mob keeps while walking toward a path point right
  *                        beside a dangerous drop; 1.0 is no slowdown
+ * @param depthWeight     for a path that can't reach the owner, how many blocks of distance each block
+ *                        below the mob's start counts as, in choosing where the path ends; 0 is off
  */
-public record EdgeCare(int keepBackBlocks, boolean trimUnreachable, int nearOwnerBlocks, double carefulSpeed) {
+public record EdgeCare(int keepBackBlocks, boolean trimUnreachable, int nearOwnerBlocks, double carefulSpeed, double depthWeight) {
 
     /**
      * The care a following recruit's path gets under {@code settings}. Keeping back near the owner
@@ -24,6 +26,7 @@ public record EdgeCare(int keepBackBlocks, boolean trimUnreachable, int nearOwne
                 ? keepBack + 1 + (int) Math.ceil(Math.sqrt(settings.followStopDistanceSqr()))
                 : 0;
         return new EdgeCare(keepBack, settings.waitWhenOwnerUnreachable(), nearOwner,
-                settings.edgeMargin() ? settings.edgeCarefulSpeed() : 1.0);
+                settings.edgeMargin() ? settings.edgeCarefulSpeed() : 1.0,
+                settings.waitWhenOwnerUnreachable() ? settings.unreachableDepthWeight() : 0.0);
     }
 }

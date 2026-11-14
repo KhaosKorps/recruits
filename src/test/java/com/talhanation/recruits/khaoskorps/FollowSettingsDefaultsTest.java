@@ -76,6 +76,12 @@ class FollowSettingsDefaultsTest {
     }
 
     @Test
+    void depthWeighsTwoBlocksPerBlockBelowAndDropsCostNothingByDefault() {
+        assertEquals(2.0, d.unreachableDepthWeight(), "each block below its start counts as 2 blocks of distance for an unreachable path's end");
+        assertEquals(0.0, d.dropCostPerBlock(), "no extra cost for drops, as in 1.15.2");
+    }
+
+    @Test
     void pathLoggingIsOffByDefault() {
         assertFalse(d.pathLog());
     }

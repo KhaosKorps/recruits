@@ -248,6 +248,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         int keep = this.path.getNodeCount();
         if (this.edgeCare.trimUnreachable()) {
             keep = PathEdgeTrim.pointsToKeep(this.level, this.path, maxFall, this.edgeCare.keepBackBlocks());
+            keep = Math.min(keep, PathEdgeTrim.pointsToKeepForDepth(this.path, this.edgeCare.depthWeight()));
         }
         if (keep == this.path.getNodeCount() && this.edgeCare.nearOwnerBlocks() > 0) {
             keep = PathEdgeTrim.pointsToKeepNearTarget(this.level, this.path, maxFall,

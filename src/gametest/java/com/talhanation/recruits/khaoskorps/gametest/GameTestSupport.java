@@ -305,7 +305,19 @@ public final class GameTestSupport {
         return route + "; standing on " + helper.getLevel().getBlockState(under).getBlock().getName().getString()
                 + " at " + relativeBlock(helper, under) + "; on ground " + recruit.onGround() + ", motion " + String.format("(%.3f, %.3f, %.3f)",
                 recruit.getDeltaMovement().x, recruit.getDeltaMovement().y, recruit.getDeltaMovement().z)
-                + "; target " + targetOf(recruit) + "; nearby " + others;
+                + "; target " + targetOf(recruit) + "; nearby " + others + "; " + fluidsInArena(helper) + "; arena at "
+                + helper.absolutePos(BlockPos.ZERO).toShortString();
+    }
+
+    /** Fluid blocks anywhere in the template's 18 x 9 x 9 area, for failure messages; a test arena is built dry. */
+    private static String fluidsInArena(GameTestHelper helper) {
+        List<String> found = new ArrayList<>();
+        int count = 0;
+        for (BlockPos rel : BlockPos.betweenClosed(0, 0, 0, 17, 8, 8)) {
+            if (helper.getLevel().getFluidState(helper.absolutePos(rel)).isEmpty()) continue;
+            if (count++ < 6) found.add(relativeBlock(helper, helper.absolutePos(rel)));
+        }
+        return count == 0 ? "no fluid in the arena" : count + " fluid blocks in the arena, such as " + found;
     }
 
     /** The recruit's attack target and where it is, for failure messages. */

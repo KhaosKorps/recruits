@@ -49,10 +49,34 @@ test {
 // world/serverconfig/recruits-server.toml before the run. The fork's own settings file goes too:
 // a run that stops mid-batch would leave that batch's values in it, and Forge writes it afresh
 // with the defaults.
+//
+// Forge's GameTest server is an ordinary dedicated server, so its world comes from
+// server.properties, and the default is a normal world with monsters spawning. Test arenas sit
+// near the bottom of the world, so in a normal world cave water and aquifers flood into them and
+// cave monsters wander in. The run therefore uses a superflat world with no structures and no
+// natural monster spawning. Difficulty stays as it is, so a test can still spawn a hostile mob on
+// purpose.
+def gameTestWorld = [
+        'level-type'          : 'minecraft\\:flat',
+        'generate-structures' : 'false',
+        'spawn-monsters'      : 'false',
+]
 tasks.matching { it.name == 'runGameTestServer' }.configureEach {
     doFirst {
         project.delete(project.fileTree('build/gametest-run/world') { exclude 'serverconfig/**' })
         project.delete('build/gametest-run/world/serverconfig/recruits-khaoskorps-server.toml')
+
+        def properties = project.file('build/gametest-run/server.properties')
+        def lines = properties.exists() ? properties.readLines() : []
+        def missing = new LinkedHashMap(gameTestWorld)
+        lines = lines.collect { line ->
+            def key = line.contains('=') ? line.substring(0, line.indexOf('=')) : null
+            if (key != null && missing.containsKey(key)) return key + '=' + missing.remove(key)
+            return line
+        }
+        missing.each { key, value -> lines << (key + '=' + value) }
+        properties.parentFile.mkdirs()
+        properties.text = lines.join(System.lineSeparator()) + System.lineSeparator()
     }
 }
 

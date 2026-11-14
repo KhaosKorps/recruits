@@ -379,6 +379,50 @@ public class EdgeSafetyGameTests {
         });
     }
 
+    /**
+     * The perch rule in the follow navigation itself, apart from the near-owner rule: no owner, and
+     * the navigation is never ticked, so nothing trims the path. With the follow goal's edge care on
+     * the navigation, its search finds no way down onto the lone block.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 60, batch = PERCH)
+    public static void theFollowNavigationWithEdgeCareFindsNoWayOntoTheLoneBlock(GameTestHelper helper) {
+        navigationSearchToTheLoneBlock(helper, true, path -> {
+            if (path.canReach()) throw new GameTestAssertException("with edge care the follow navigation drops onto the lone block: " + pathPoints(helper, path));
+        });
+    }
+
+    /** Without edge care on the navigation, as for hold and move orders, the same search drops onto the lone block. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 60, batch = PERCH)
+    public static void theNavigationWithoutEdgeCareDropsOntoTheLoneBlock(GameTestHelper helper) {
+        navigationSearchToTheLoneBlock(helper, false, path -> {
+            if (!path.canReach()) throw new GameTestAssertException("without edge care the navigation doesn't reach the lone block: " + pathPoints(helper, path));
+        });
+    }
+
+    private static void navigationSearchToTheLoneBlock(GameTestHelper helper, boolean edgeCare,
+                                                       java.util.function.Consumer<net.minecraft.world.level.pathfinder.Path> check) {
+        cliffWithALoneBlockBelow(helper);
+        AbstractRecruitEntity recruit = helper.spawn(com.talhanation.recruits.init.ModEntityTypes.RECRUIT.get(), 2, 7, 2);
+        recruit.setAggroState(3);
+        recruit.setNoAi(true);
+        net.minecraft.world.level.pathfinder.Path[] path = {null};
+        helper.runAfterDelay(1, () -> {
+            recruit.setOnGround(true);
+            com.talhanation.recruits.pathfinding.AsyncPathNavigation navigation =
+                    (com.talhanation.recruits.pathfinding.AsyncPathNavigation) recruit.getNavigation();
+            if (edgeCare) navigation.setEdgeCare(com.talhanation.recruits.khaoskorps.EdgeCare.forFollowing(
+                    com.talhanation.recruits.khaoskorps.FollowSettings.current()));
+            path[0] = navigation.createPath(helper.absolutePos(new BlockPos(6, 4, 2)), 0);
+            if (path[0] == null) throw new GameTestAssertException("the search couldn't start on the cliff top");
+        });
+        helper.onEachTick(() -> {
+            if (path[0] == null || (path[0] instanceof com.talhanation.recruits.pathfinding.AsyncPath async && !async.isProcessed())) return;
+            check.accept(path[0]);
+            recruit.discard();
+            helper.succeed();
+        });
+    }
+
     private static void searchFromTheCliffToTheLoneBlock(GameTestHelper helper,
                                                          java.util.function.Consumer<net.minecraft.world.level.pathfinder.Path> check) {
         cliffWithALoneBlockBelow(helper);

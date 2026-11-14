@@ -21,13 +21,10 @@ import java.lang.reflect.Field;
 import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 
 /**
- * KhaosKorps fork: Nena's G2-7 for the follow goal's settings
- * (AUDT-261113-Recruits_Test_Audit_And_Test_Plan_By_Nena).
- *
- * Every value the goal hard-coded in 1.15.2 (RecruitFollowOwnerGoal.java:23, :24, :29, :73, and the
- * 1.05 speed from AbstractRecruitEntity.java:347) now comes from the settings snapshot each time it is
- * used, so a saved change reaches recruits already in the world. Each batch sets its own values over
- * the defaults and resets everything after.
+ * The follow goal's settings: start and stop distance, start-check and repath interval, and speed.
+ * Each test sets values 1.15.2 never used, so it fails if the goal still uses its old fixed values,
+ * and the repath test changes its value mid-test to show the goal picks up a change while running.
+ * Each batch sets its own values over the defaults and resets everything after.
  */
 @GameTestHolder(Main.MOD_ID)
 @PrefixGameTestTemplate(false)

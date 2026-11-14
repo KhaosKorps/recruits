@@ -7,7 +7,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * KhaosKorps fork: safe handling of group merge redirects (gap P2; Dada's D2).
+ * Safe handling of group merge redirects.
  *
  * When a group is merged into another, Recruits stores a redirect from the old group's ID to the
  * new one and saves it. At the 1.15.2 release a group could be merged into itself, which saves a

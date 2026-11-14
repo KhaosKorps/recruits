@@ -3,8 +3,9 @@ package com.talhanation.recruits.khaoskorps;
 import net.minecraftforge.common.MinecraftForge;
 
 /**
- * KhaosKorps fork: the one entry point for the fork's own code, so upstream's Main carries a
- * single line for it (Kosta's Q2 rule 2: new behaviour in new classes, reached by one-line hooks).
+ * The one entry point for the fork's own code, so upstream's Main carries a single line for it.
+ * New behaviour lives in this package and reaches upstream code through one-line hooks, which
+ * keeps merges from upstream small.
  */
 public final class KhaosKorps {
 

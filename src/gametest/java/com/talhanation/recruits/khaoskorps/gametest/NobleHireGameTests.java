@@ -29,9 +29,9 @@ import java.util.UUID;
 import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 
 /**
- * KhaosKorps fork: gap P3, noble hiring (AUDT-261113-Recruits_Security_Port_Check_By_Anon), and
- * the user's "fix it like the upstream did" for the price
- * (DRFT-261113-Recruits_Follow_Pathfinding_Settings_And_Measurement, section 7, item 1).
+ * Hiring from a noble villager is decided on the server: it charges the trade's own price, uses up
+ * the trade, and needs a villager to convert whenever the server config says so, whatever the
+ * client claims.
  *
  * The trade's price is 7 and a plain recruit's own cost is 4 (RecruitCost's default), so the
  * price charged shows which one the server used. Emerald is RecruitCurrency's default.

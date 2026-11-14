@@ -8,9 +8,8 @@ import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 
 /**
- * KhaosKorps fork: the fork's own server settings, in their own file so upstream's
- * recruits-server.toml never collides with them (Kosta's Q2 rule 1, approved by the user,
- * DRFT-261113-Recruits_Follow_Pathfinding_Settings_And_Measurement section 5, answer 1).
+ * The fork's own server settings, in their own file so upstream's recruits-server.toml never
+ * collides with them.
  *
  * The file is <world>/serverconfig/recruits-khaoskorps-server.toml. Pathfinding values are
  * copied into an immutable {@link FollowSettings} snapshot whenever the file loads or is saved,

@@ -86,7 +86,7 @@ public class MessageHireFromNobleVillager implements Message<MessageHireFromNobl
         @SuppressWarnings("unchecked")
         EntityType<? extends AbstractRecruitEntity> recruitType = (EntityType<? extends AbstractRecruitEntity>) optionalType.get();
 
-        // KhaosKorps fork (gap P3), from upstream's 772085e4: the server config decides whether a villager is
+        // KhaosKorps fork, from upstream's 772085e4: the server config decides whether a villager is
         // needed, not the client's flag; the noble's trade price is charged; the trade is used only when the hire
         // happened. Upstream's reputation-based price (its village system) isn't ported, so the price is the trade's.
         boolean hired;

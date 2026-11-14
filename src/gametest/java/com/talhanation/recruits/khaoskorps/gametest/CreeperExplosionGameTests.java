@@ -16,9 +16,8 @@ import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 /**
- * KhaosKorps fork: the user's creeper settings
- * (DRFT-261113-Recruits_Follow_Pathfinding_Settings_And_Measurement, section 1):
- * "stops block damage on by default. stops damage also as an option off by default."
+ * Creeper explosions under the fork's creeper settings: by default they break no blocks but still
+ * hurt what's near; with PreventCreeperDamage on they hurt nothing either.
  *
  * A creeper is lit next to a stone pillar and a pig. With the defaults the pillar stands and the
  * pig is hurt; with PreventCreeperDamage on, the pig is unhurt too. The second case changes a

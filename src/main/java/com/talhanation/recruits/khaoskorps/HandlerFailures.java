@@ -6,7 +6,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 
 /**
- * KhaosKorps fork: makes a failed message handler visible (gap P6).
+ * Makes a failed message handler visible in the log.
  *
  * Forge's NetworkEvent.Context.enqueueWork runs a handler on the game thread and returns a
  * future. If the handler throws, only that future fails, and nothing reads it, so neither a

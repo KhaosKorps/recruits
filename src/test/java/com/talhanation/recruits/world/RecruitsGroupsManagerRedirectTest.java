@@ -9,9 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 /**
- * KhaosKorps fork: gap P2 (AUDT-261113-Recruits_Security_Port_Check_By_Anon; Dada's D2).
- * A group redirect saved before the security port can point a group at itself, and the
- * release's resolveGroup then loops forever on the server thread. These run the real
+ * A group redirect saved by 1.15.2 can point a group at itself, and 1.15.2's resolveGroup then
+ * loops forever on the server thread. These run the real
  * manager; each lookup must return within a second.
  */
 class RecruitsGroupsManagerRedirectTest {

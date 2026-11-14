@@ -5,8 +5,7 @@ import net.minecraftforge.event.level.ExplosionEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 
 /**
- * KhaosKorps fork: the user's creeper settings
- * (DRFT-261113-Recruits_Follow_Pathfinding_Settings_And_Measurement, section 1).
+ * Applies PreventCreeperBlockDamage and PreventCreeperDamage to creeper explosions.
  *
  * Forge fires ExplosionEvent.Detonate inside Explosion.explode, after it has listed the blocks
  * and entities the blast reaches and before it breaks or hurts any of them. Emptying those lists

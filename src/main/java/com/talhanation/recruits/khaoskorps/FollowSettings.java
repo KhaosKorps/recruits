@@ -1,14 +1,14 @@
 package com.talhanation.recruits.khaoskorps;
 
 /**
- * KhaosKorps fork: one immutable snapshot of the pathfinding settings.
+ * One immutable snapshot of the pathfinding settings.
  *
- * The path worker thread reads settings while it searches, and must never read Forge's config
- * objects (Kosta's Q2 rule "read settings on the server thread"). So the config is copied into
- * this record when it loads or is saved, and the record is published through one volatile field:
- * a reader gets a consistent set of values with a single memory read, and no lock.
+ * The path worker thread reads settings while it searches, and Forge's config objects aren't safe
+ * to read from it. So the config is copied into this record when it loads or is saved, and the
+ * record is published through one volatile field: a reader gets a consistent set of values with
+ * a single memory read, and no lock.
  *
- * Plain Java with no Minecraft types, so its defaults are covered by JUnit (Nena's M1).
+ * Plain Java with no Minecraft types, so its defaults and rules are covered by JUnit.
  */
 public record FollowSettings(
         int maxFallDistance,
@@ -42,7 +42,7 @@ public record FollowSettings(
         OFF
     }
 
-    /** The 1.15.2 release's values, except the two safety behaviours the user turned on (section 8, decisions 1 and 3). */
+    /** The 1.15.2 release's values, except two safety behaviours that are on: EdgeMargin and WaitWhenOwnerUnreachable. */
     public static final FollowSettings DEFAULTS = new FollowSettings(
             1, 1,
             9.0, 7.0,

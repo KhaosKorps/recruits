@@ -47,7 +47,7 @@ public class MessageAnswerTreaty implements Message<MessageAnswerTreaty> {
 
         for (MessengerEntity messenger : list) {
             if (messenger.getUUID().equals(this.recruit) && NetworkSecurity.canAnswerMessenger(player, messenger)) {
-                // KhaosKorps fork (gap P4): only the leader of the answering player's faction can accept a treaty.
+                // KhaosKorps fork: only the leader of the answering player's faction can accept a treaty.
                 boolean accept = accepted && NetworkSecurity.isFactionLeader(player, NetworkSecurity.getFaction(player));
                 if (accept) {
                     handleTreatyAccepted(messenger, player, level);

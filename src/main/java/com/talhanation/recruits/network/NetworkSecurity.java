@@ -77,7 +77,7 @@ public final class NetworkSecurity {
                     context.setPacketHandled(true);
                     return;
                 }
-                // KhaosKorps fork (gap P6): a handler that throws is logged instead of vanishing.
+                // KhaosKorps fork: a handler that throws is logged instead of vanishing.
                 HandlerFailures.reportIfFailed(context.enqueueWork(() -> msg.executeClientSide(context)),
                         () -> msg.getClass().getSimpleName() + " on the client", NetworkSecurity::logHandlerFailure);
                 context.setPacketHandled(true);
@@ -97,7 +97,7 @@ public final class NetworkSecurity {
         }, Optional.of(directionOf(message)));
     }
 
-    /** KhaosKorps fork (gap P6): how a failed message handler is logged. */
+    /** KhaosKorps fork: how a failed message handler is logged. */
     private static void logHandlerFailure(String what, Throwable cause) {
         Main.LOGGER.error("[Recruits] Handling {} failed", what, cause);
     }
@@ -108,7 +108,7 @@ public final class NetworkSecurity {
     }
 
     /**
-     * KhaosKorps fork (gap P1): the direction a message travels, from its executing side. Forge
+     * KhaosKorps fork: the direction a message travels, from its executing side. Forge
      * checks a registered direction before decoding (IndexedMessageCodec.consume), so a
      * client-bound message sent by a client is refused before its lists are allocated.
      * Local to each side: nothing on the wire changes, so 1.15.2 clients are unaffected.

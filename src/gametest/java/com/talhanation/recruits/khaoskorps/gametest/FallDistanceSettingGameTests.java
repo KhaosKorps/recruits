@@ -19,10 +19,10 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 
 /**
- * KhaosKorps fork: Nena's G2-1 and G2-3 to G2-6 (AUDT-261113-Recruits_Test_Audit_And_Test_Plan_By_Nena).
- * The fall-distance settings win over each recruit's own saved value (section 7, item 5, choice 3),
- * the save keeps the recruit's own value (Atticus's rollback trap), and mounted recruits use their own
- * setting (section 8). These change server-wide settings, so they run in their own batch.
+ * The fall-distance settings: MaxFallDistance wins over each recruit's own saved value, so it
+ * reaches recruits already in the world and survives a move order, while the save still writes the
+ * recruit's own value, so an older jar reads back what it wrote. A horse ridden by a recruit uses
+ * MountedMaxFallDistance. These change server-wide settings, so they run in their own batch.
  */
 @GameTestHolder(Main.MOD_ID)
 @PrefixGameTestTemplate(false)
@@ -43,7 +43,7 @@ public class FallDistanceSettingGameTests {
         resetForkSettings();
     }
 
-    /** G2-1: with the setting at 3, a recruit follows its owner down a two-block drop. */
+    /** With the setting at 3, a recruit follows its owner down a two-block drop it refuses at 1. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 300, batch = BATCH)
     public static void fallDistanceSettingLetsARecruitFollowDownATwoBlockDrop(GameTestHelper helper) {
         walls(helper);
@@ -61,7 +61,7 @@ public class FallDistanceSettingGameTests {
         });
     }
 
-    /** G2-4 and the rollback rule: the setting wins, but the save keeps the recruit's own value. */
+    /** The setting wins over a recruit's own value, but the save still holds the recruit's own value. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20, batch = BATCH)
     public static void theSettingWinsButTheSaveKeepsTheRecruitsOwnFallDistance(GameTestHelper helper) {
         AbstractRecruitEntity recruit = helper.spawn(com.talhanation.recruits.init.ModEntityTypes.RECRUIT.get(), 5, 2, 2);
@@ -78,21 +78,21 @@ public class FallDistanceSettingGameTests {
         helper.succeed();
     }
 
-    /** G2-5: a positional move order no longer pulls the fall distance back to 1. */
+    /** A positional move order resets the recruit's own value to 1; the setting still wins after it. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20, batch = BATCH)
     public static void aMoveOrderDoesNotResetTheFallDistanceSetting(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 2);
         AbstractRecruitEntity recruit = helper.spawn(com.talhanation.recruits.init.ModEntityTypes.RECRUIT.get(), 3, 2, 2);
         var to = helper.absoluteVec(new net.minecraft.world.phys.Vec3(10.5, 2, 2.5));
-        recruit.getNavigation().moveTo(to.x, to.y, to.z, 1.0D); // RecruitPathNavigation.java:51 sets the field to 1
+        recruit.getNavigation().moveTo(to.x, to.y, to.z, 1.0D); // RecruitPathNavigation.moveTo sets the recruit's own value to 1
         int used = recruit.getMaxFallDistance();
         recruit.discard();
         if (used != 3) throw new GameTestAssertException("after a move order the recruit uses fall distance " + used + ", not 3");
         helper.succeed();
     }
 
-    /** G2-6: a horse ridden by a recruit uses MountedMaxFallDistance (MobMixin). */
+    /** A horse ridden by a recruit uses MountedMaxFallDistance, through MobMixin. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20, batch = BATCH)
     public static void aHorseRiddenByARecruitUsesTheMountedFallDistance(GameTestHelper helper) {
         walls(helper);

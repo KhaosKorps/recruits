@@ -439,7 +439,7 @@ public abstract class AbstractRecruitEntity extends AbstractInventoryEntity{
         nbt.putInt("upkeepTimer", this.getUpkeepTimer());
         nbt.putInt("Color", this.getColor());
         nbt.putInt("Biome", this.getBiome());
-        nbt.putInt("MaxFallDistance", this.maxFallDistance); // KhaosKorps fork: the recruit's own value, not the setting (rollback-safe)
+        nbt.putInt("MaxFallDistance", this.maxFallDistance); // KhaosKorps fork: the recruit's own value, not the setting, so an older jar reads back what it wrote
         nbt.putInt("formationPos", formationPos);
         nbt.putBoolean("ShouldRest", this.getShouldRest());
         nbt.putBoolean("ShouldRanged", this.getShouldRanged());

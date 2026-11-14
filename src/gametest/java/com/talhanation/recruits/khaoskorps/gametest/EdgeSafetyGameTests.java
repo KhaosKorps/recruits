@@ -16,11 +16,10 @@ import java.util.List;
 import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 
 /**
- * KhaosKorps fork: the user's ravine observations
- * (DRFT-261113-Recruits_Follow_Pathfinding_Settings_And_Measurement, section 1): following
- * recruits fall into a ravine the owner flies over, and "where they are steping down one block
- * like a step down and that lower step is the cliff edge, moving to fast they dont stop fast
- * enough".
+ * Following recruits at a cliff edge. Every test uses one layout: high ground, a one-block step
+ * down onto a one-block ledge, then a five-block drop, with the owner in the air above the drop.
+ * A recruit that steps down onto the ledge at walking speed can slide off it, and a crowd pushes
+ * its members off.
  *
  * Optional until a fix lands: these document today's behaviour. The single-recruit tests run as
  * several copies at once, because a slide depends on speed and timing (GameTestSupport.copies says

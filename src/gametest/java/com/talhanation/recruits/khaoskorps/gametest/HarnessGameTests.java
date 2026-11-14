@@ -8,7 +8,7 @@ import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 /**
- * KhaosKorps fork: proves the GameTest harness itself works before any real test relies on it.
+ * Proves the GameTest harness itself works before any real test relies on it.
  * If these fail, every other GameTest result is meaningless.
  */
 @GameTestHolder(Main.MOD_ID)

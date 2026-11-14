@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** KhaosKorps fork: gap P2, the redirect helpers on their own (see GroupRedirects). */
+/** Following group redirects to their end, and breaking redirect loops, on plain maps. */
 class GroupRedirectsTest {
 
     private final UUID a = UUID.randomUUID();

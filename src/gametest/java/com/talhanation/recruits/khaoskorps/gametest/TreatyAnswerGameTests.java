@@ -25,9 +25,9 @@ import java.util.UUID;
 import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 
 /**
- * KhaosKorps fork: gap P4 (AUDT-261113-Recruits_Security_Port_Check_By_Anon).
+ * Only the leader of the addressed faction can accept a treaty.
  *
- * A treaty messenger can be addressed to any player of the other faction, and at the port any
+ * A treaty messenger can be addressed to any player of the other faction, and in 1.15.2 any
  * addressee could accept it, setting both factions neutral without the target faction's leader.
  * Two factions start as enemies; a messenger from faction A's leader reaches a player of B, who
  * accepts. The leader case is the control: it proves the setup can make a treaty at all.

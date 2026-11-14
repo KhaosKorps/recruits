@@ -17,12 +17,12 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * KhaosKorps fork: gap P1 (AUDT-261113-Recruits_Security_Port_Check_By_Anon).
+ * Every Recruits message is registered with the direction it travels.
  *
  * Forge refuses a packet travelling the wrong way before decoding it, but only for messages
- * registered with a direction (IndexedMessageCodec.consume: validatePacketDirection at offset
- * 188, tryDecode at 196, in Forge 47.4.10). Without one, a client can make the server decode a
- * client-bound message, including lists sized by a count the client chose.
+ * registered with a direction (IndexedMessageCodec.consume checks the direction, then decodes).
+ * Without one, a client can make the server decode a client-bound message, including lists sized
+ * by a count the client chose.
  *
  * Reads Forge's registration table by reflection: test code only, never in the release jar.
  */

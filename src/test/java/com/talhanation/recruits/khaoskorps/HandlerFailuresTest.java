@@ -10,9 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * KhaosKorps fork: gap P6 (AUDT-261113-Recruits_Security_Port_Check_By_Anon). A message
- * handler that throws inside Forge's enqueueWork only fails the returned future, which nothing
- * reads, so the failure left no trace. Each failure must be reported with what failed and why.
+ * A message handler that throws inside Forge's enqueueWork only fails the returned future, which
+ * nothing reads, so the failure left no trace. Each failure must be reported with what failed and why.
  */
 class HandlerFailuresTest {
 

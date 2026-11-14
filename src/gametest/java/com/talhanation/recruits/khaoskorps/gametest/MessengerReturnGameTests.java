@@ -17,11 +17,10 @@ import java.util.UUID;
 import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 
 /**
- * KhaosKorps fork: the server crash Anon found next to the gap fixes
- * (AUDT-261113-Recruits_Security_Gap_Fixes_Check_By_Anon, "Adjacent issue"), older than the fork.
+ * A messenger heading home must not crash the server when its owner can't be found.
  *
  * A treaty messenger whose treaty was declined tells its owner on the way home. When the owner
- * is offline or in another dimension, getOwner() is null, and at the release that message threw
+ * is offline or in another dimension, getOwner() is null, and in 1.15.2 that message threw
  * in the messenger's tick, which stops the server. MessengerEntity's MOVING_TO_OWNER case already
  * handles a missing owner a few lines earlier; this restores that for the message.
  */

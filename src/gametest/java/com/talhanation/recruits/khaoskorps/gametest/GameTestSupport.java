@@ -37,7 +37,8 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * KhaosKorps fork: shared setup for the Follow Me GameTests.
+ * Shared setup for the fork's GameTests: terrain, a test owner, recruits in Follow Me, the fork's
+ * settings per batch, and checks that the setup holds.
  *
  * Terrain is built in code inside the empty template, so each scenario reads in a diff.
  * Layout (relative to the template): a corridor along x = 1..14 and z = 1..3, closed by
@@ -181,9 +182,8 @@ public final class GameTestSupport {
     /**
      * {@code count} copies of a test in the default batch, for a result that depends on timing.
      * Used instead of {@code @GameTest(attempts = ...)}: vanilla starts each further attempt as soon
-     * as the previous one ends, outside its batch, so it can run under another batch's settings.
-     * Seen on 2026-11-13: an edge test's later attempt ran during the follow-pace batch, at follow
-     * speed 0.1, and failed its setup.
+     * as the previous one ends, outside its batch, so it can run under another batch's settings
+     * (an edge test's attempt run at another batch's follow speed of 0.1 never reaches the ledge).
      */
     public static List<TestFunction> copies(String testName, int count, int timeoutTicks, boolean required,
                                             Consumer<GameTestHelper> test) {
@@ -218,7 +218,8 @@ public final class GameTestSupport {
     /**
      * Fails if a path took the wrong route: with UseAsyncPathfinding on, every path must be an
      * AsyncPath, and with it off, none may be. Async is a world-restart setting, and the
-     * navigation's path finder is chosen once per JVM (Atticus's K8 note), so on and off are
+     * navigation's path finder is chosen once per JVM (RecruitPathNavigation keeps it in a static
+     * field), so on and off are
      * two separate runs of the GameTest server.
      */
     public static void assertPathRoute(AbstractRecruitEntity recruit) {

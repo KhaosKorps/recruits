@@ -61,7 +61,8 @@ public class PillagerEvents {
         }
 
         if (entity instanceof Monster monster) {
-            if (!(monster instanceof Creeper) && !(monster instanceof EnderMan))
+            boolean creeperSpared = monster instanceof Creeper && !com.talhanation.recruits.khaoskorps.FollowSettings.current().creepersTargetRecruits(); // KhaosKorps fork: CreepersTargetRecruits
+            if (!creeperSpared && !(monster instanceof EnderMan))
                 monster.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(monster, AbstractRecruitEntity.class, true));
         }
 

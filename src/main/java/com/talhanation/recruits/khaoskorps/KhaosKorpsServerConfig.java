@@ -60,7 +60,7 @@ public final class KhaosKorpsServerConfig {
                 .comment("Creeper explosions don't hurt or knock back anything: players, recruits, animals or other entities.")
                 .define("PreventCreeperDamage", false);
         CreepersTargetRecruits = builder
-                .comment("Creepers hunt recruits as other monsters do. Applies to creepers that appear after the change.", "NOT USED YET: changing it has no effect in this build.")
+                .comment("Creepers hunt recruits as other monsters do. Applies to creepers that appear after the change.")
                 .define("CreepersTargetRecruits", d.creepersTargetRecruits());
         builder.pop();
 

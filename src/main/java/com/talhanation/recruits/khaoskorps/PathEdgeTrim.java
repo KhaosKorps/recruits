@@ -73,13 +73,21 @@ public final class PathEdgeTrim {
         return best < 0 ? count : best + 1;
     }
 
-    /** Whether either of the two columns from {@code end} toward {@code target} is a dangerous drop. */
+    /**
+     * Whether either of the two columns from {@code end} along the straight line toward
+     * {@code target} is a dangerous drop. The line is followed as it runs, so with the target ahead
+     * and a little to one side the columns checked lie ahead, not diagonally beside a trail.
+     */
     static boolean dropAhead(BlockGetter level, Node end, BlockPos target, int maxFall) {
-        int stepX = Integer.signum(target.getX() - end.x);
-        int stepZ = Integer.signum(target.getZ() - end.z);
-        if (stepX == 0 && stepZ == 0) return false;
+        double dx = target.getX() - end.x;
+        double dz = target.getZ() - end.z;
+        double length = Math.sqrt(dx * dx + dz * dz);
+        if (length < 1e-6) return false;
         for (int step = 1; step <= 2; step++) {
-            if (EdgeProbe.isDangerousDrop(level, end.x + stepX * step, end.y, end.z + stepZ * step, maxFall)) return true;
+            int cx = end.x + (int) Math.round(step * dx / length);
+            int cz = end.z + (int) Math.round(step * dz / length);
+            if (cx == end.x && cz == end.z) continue;
+            if (EdgeProbe.isDangerousDropFrom(level, end.x, end.y, end.z, cx - end.x, cz - end.z, maxFall)) return true;
         }
         return false;
     }

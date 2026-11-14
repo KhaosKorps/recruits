@@ -54,6 +54,39 @@ public class EdgeCostGameTests {
                 throw new GameTestAssertException("with EdgeMargin on, the first path still has " + onTheRim
                         + " of its points on the ditch's rim (z = 2, x = 5..9): " + pathPoints(helper, path));
             }
+            if (!path.canReach()) {
+                throw new GameTestAssertException("the path that keeps away from the rim no longer reaches the owner: " + pathPoints(helper, path));
+            }
+        });
+    }
+
+    /**
+     * A move order isn't following, so its search gets no edge cost: with the defaults, a recruit
+     * ordered to the far end goes the straight way, along the ditch's rim.
+     */
+    @GameTest(template = T, timeoutTicks = 100)
+    public static void aMoveOrderAlongADitchTakesTheStraightWayAlongTheRim(GameTestHelper helper) {
+        ditch(helper);
+        AbstractRecruitEntity recruit = helper.spawn(com.talhanation.recruits.init.ModEntityTypes.RECRUIT.get(), 1, 5, 2);
+        recruit.setAggroState(3);
+        boolean[] ordered = {false};
+        helper.onEachTick(() -> {
+            if (!ordered[0]) {
+                if (helper.getTick() < 2) return;
+                net.minecraft.world.phys.Vec3 to = helper.absoluteVec(new net.minecraft.world.phys.Vec3(14.5, 5, 2.5));
+                recruit.getNavigation().moveTo(to.x, to.y, to.z, 1.0D);
+                ordered[0] = true;
+                return;
+            }
+            Path path = finishedPath(recruit);
+            if (path == null) return;
+            int onTheRim = pointsOnTheRim(helper, path);
+            if (onTheRim != 5) {
+                throw new GameTestAssertException("a move order's path has " + onTheRim
+                        + " of its points on the ditch's rim (z = 2, x = 5..9), not all 5: " + pathPoints(helper, path));
+            }
+            recruit.discard();
+            helper.succeed();
         });
     }
 
@@ -72,13 +105,27 @@ public class EdgeCostGameTests {
         void check(Path path, int pointsOnTheRim);
     }
 
-    private static void firstPathAlongTheDitch(GameTestHelper helper, PathCheck check) {
+    private static void ditch(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 5);
         for (int x = 4; x <= 10; x++) {
             for (int y = 0; y < 5; y++) helper.setBlock(x, y, CORRIDOR_Z_MAX, Blocks.AIR);
         }
         daytime(helper);
+    }
+
+    private static int pointsOnTheRim(GameTestHelper helper, Path path) {
+        BlockPos origin = helper.absolutePos(BlockPos.ZERO);
+        int onTheRim = 0;
+        for (int i = 0; i < path.getNodeCount(); i++) {
+            BlockPos p = path.getNode(i).asBlockPos().subtract(origin);
+            if (p.getZ() == 2 && p.getX() >= 5 && p.getX() <= 9) onTheRim++;
+        }
+        return onTheRim;
+    }
+
+    private static void firstPathAlongTheDitch(GameTestHelper helper, PathCheck check) {
+        ditch(helper);
         ServerPlayer owner = owner(helper, 14.5, 5, 2.5);
         pin(helper, owner, 14.5, 5, 2.5);
         AbstractRecruitEntity recruit = followingRecruit(helper, owner, 1, 5, 2);
@@ -86,13 +133,7 @@ public class EdgeCostGameTests {
         helper.onEachTick(() -> {
             Path path = finishedPath(recruit);
             if (path == null) return;
-            BlockPos origin = helper.absolutePos(BlockPos.ZERO);
-            int onTheRim = 0;
-            for (int i = 0; i < path.getNodeCount(); i++) {
-                BlockPos p = path.getNode(i).asBlockPos().subtract(origin);
-                if (p.getZ() == 2 && p.getX() >= 5 && p.getX() <= 9) onTheRim++;
-            }
-            check.check(path, onTheRim);
+            check.check(path, pointsOnTheRim(helper, path));
             removeOwner(helper, owner);
             helper.succeed();
         });

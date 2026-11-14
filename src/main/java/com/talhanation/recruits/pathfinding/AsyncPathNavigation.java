@@ -174,6 +174,11 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         this.edgeCare = care;
     }
 
+    /** KhaosKorps fork: whether a follow goal has put edge care on this navigation. Server thread only. */
+    public boolean hasEdgeCare() {
+        return this.edgeCare != null;
+    }
+
     /**
      * KhaosKorps fork: applies the edge care the first time a path is seen finished, which covers
      * sync paths and async ones alike (PathEdgeTrim). A path that can't reach its target past a

@@ -37,6 +37,12 @@ public class DetourNodeEvaluator extends RecruitsPathNodeEvaluator {
         nextStart = start;
     }
 
+    /** Detours are planned for following recruits, so their searches always keep away from edges. */
+    @Override
+    protected boolean edgeCareApplies(net.minecraft.world.entity.Mob mob) {
+        return true;
+    }
+
     @Override
     public Node getStart() {
         BlockPos start = nextStart;

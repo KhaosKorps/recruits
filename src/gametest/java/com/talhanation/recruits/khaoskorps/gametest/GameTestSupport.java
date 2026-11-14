@@ -73,6 +73,18 @@ public final class GameTestSupport {
         }
     }
 
+    /**
+     * A walkable staircase down the corridor, one block a step: stand height 7 at x = 1..2, then one
+     * lower each block to stand height 1 at x = 8, and flat at 1 to x = 14.
+     */
+    public static void stairsDown(GameTestHelper helper) {
+        walls(helper);
+        for (int x = CORRIDOR_X_MIN; x <= CORRIDOR_X_MAX; x++) {
+            int stand = x <= 2 ? 7 : Math.max(1, 9 - x);
+            ground(helper, x, x, stand);
+        }
+    }
+
     /** Solid stone under x = fromX..toX across the corridor, so a mob there stands at standY. */
     public static void ground(GameTestHelper helper, int fromX, int toX, int standY) {
         for (int x = fromX; x <= toX; x++) {

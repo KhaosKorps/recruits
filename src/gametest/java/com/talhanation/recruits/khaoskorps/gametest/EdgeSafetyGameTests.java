@@ -42,6 +42,40 @@ public class EdgeSafetyGameTests {
 
     private static final int COPIES = 5;
     private static final String TRAIL = "khaoskorps_trail_short_paths";
+    private static final String SLOPE = "khaoskorps_slope_short_paths";
+
+    @BeforeBatch(batch = SLOPE)
+    public static void shortPathsOnASlope(ServerLevel level) {
+        forkSettings(() -> KhaosKorpsServerConfig.FollowMaxPathLength.set(6));
+    }
+
+    @AfterBatch(batch = SLOPE)
+    public static void afterShortPathsOnASlope(ServerLevel level) {
+        resetForkSettings();
+    }
+
+    /**
+     * A staircase down a block a step, with follow paths capped at 6 blocks, so every path down it
+     * falls short of the owner on the flat at the bottom. A slope isn't a drop, so no path is cut
+     * back: the recruit walks down to its owner.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 500, batch = SLOPE)
+    public static void aRecruitFollowsDownAStaircaseWhosePathsFallShort(GameTestHelper helper) {
+        stairsDown(helper);
+        daytime(helper);
+        ServerPlayer owner = owner(helper, 13.5, 1, 2.5);
+        pin(helper, owner, 13.5, 1, 2.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 2, 7, 2);
+
+        helper.runAfterDelay(1, () -> assertFollowPreconditions(recruit));
+        helper.succeedWhen(() -> {
+            if (recruit.distanceToSqr(owner) > 9.0) {
+                throw new GameTestAssertException("the recruit hasn't come down the staircase to the owner: at "
+                        + describe(helper, recruit) + "; " + navigationState(helper, recruit));
+            }
+            removeOwner(helper, owner);
+        });
+    }
 
     private static void cliff(GameTestHelper helper) {
         walls(helper);
@@ -243,6 +277,11 @@ public class EdgeSafetyGameTests {
             if (toDrop != com.talhanation.recruits.khaoskorps.EdgeProbe.NONE && toDrop <= 3) {
                 throw new GameTestAssertException("the path to an owner at the rim ends at " + end.toShortString()
                         + ", " + toDrop + " blocks from the drop; it should end more than 3 blocks back");
+            }
+            double fromOwner = Math.hypot(end.getX() - 10, end.getZ() - 6);
+            if (fromOwner > 6.0) {
+                throw new GameTestAssertException("the path to an owner at the rim ends at " + end.toShortString()
+                        + ", " + String.format("%.1f", fromOwner) + " blocks from the owner; it should stop within 6");
             }
         });
     }
@@ -447,6 +486,32 @@ public class EdgeSafetyGameTests {
      * the owner at the far end. The drop is beside the trail, not ahead of it, so no path is cut
      * back: the recruit keeps moving and reaches the owner.
      */
+    /**
+     * The same, with the owner past the trail's end and off its line, at (14.5, 5, 3.5): the straight
+     * line toward the owner runs ahead along the trail, so no path is cut back, though the ditch lies
+     * diagonally ahead.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 500, batch = TRAIL)
+    public static void aRecruitFollowsAlongACliffTrailToAnOwnerOffToOneSide(GameTestHelper helper) {
+        cliffTrail(helper);
+        ServerPlayer owner = owner(helper, 14.5, 5, 3.5);
+        pin(helper, owner, 14.5, 5, 3.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 1, 5, 1);
+
+        helper.onEachTick(() -> {
+            if (relative(helper, recruit).y < 4.99) {
+                throw new GameTestAssertException("the recruit fell off the trail: at " + describe(helper, recruit));
+            }
+        });
+        helper.succeedWhen(() -> {
+            if (recruit.distanceToSqr(owner) > 9.0) {
+                throw new GameTestAssertException("the recruit hasn't reached the owner along the trail: at "
+                        + describe(helper, recruit) + "; " + navigationState(helper, recruit));
+            }
+            removeOwner(helper, owner);
+        });
+    }
+
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 500, batch = TRAIL)
     public static void aRecruitFollowsAlongACliffTrailWhosePathsFallShort(GameTestHelper helper) {
         cliffTrail(helper);

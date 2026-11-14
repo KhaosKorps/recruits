@@ -45,9 +45,14 @@ public final class EdgeProbe {
     /**
      * How far, in blocks, the nearest dangerous drop is from a mob standing at (x, feetY, z),
      * searching square rings out to {@code radius}; {@link #NONE} when there is none that close.
-     * A drop behind a wall doesn't count: every column on the straight line to it must be open at
-     * feet height. {@code cache}, when given, remembers each column's answer for the rest of one
-     * search; its default return value must be -1.
+     *
+     * Each column is judged from the height a mob would reach it at, walking the straight line from
+     * (x, z) one column at a time: down onto the ground when it lies within the fall distance, or up
+     * a one-block step. So a walkable slope is no drop, while a cliff is one however far back it is
+     * seen from. A column the walk can't reach, behind a wall or past a fall too deep, doesn't count:
+     * a fall too deep on the way is itself counted, at its own nearer ring.
+     * {@code cache}, when given, remembers each column's answer for the rest of one search; its
+     * default return value must be -1.
      */
     public static int distanceToDangerousDrop(BlockGetter level, int x, int feetY, int z, int maxFall, int radius,
                                               @Nullable Long2ByteMap cache) {
@@ -55,8 +60,8 @@ public final class EdgeProbe {
             for (int dx = -ring; dx <= ring; dx++) {
                 for (int dz = -ring; dz <= ring; dz++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) continue;
-                    if (isDangerousDropCached(level, x + dx, feetY, z + dz, maxFall, cache)
-                            && !behindAWall(level, x, feetY, z, dx, dz, ring)) {
+                    int arrival = feetOnTheWayTo(level, x, feetY, z, dx, dz, ring, maxFall);
+                    if (arrival != UNREACHABLE && isDangerousDropCached(level, x + dx, arrival, z + dz, maxFall, cache)) {
                         return ring;
                     }
                 }
@@ -65,16 +70,44 @@ public final class EdgeProbe {
         return NONE;
     }
 
-    /** Whether a column on the straight line from (x, z) to (x + dx, z + dz) is closed at feet height. */
-    private static boolean behindAWall(BlockGetter level, int x, int feetY, int z, int dx, int dz, int ring) {
+    /**
+     * Whether column (x + dx, z + dz) is a dangerous drop for a mob at (x, feetY, z) that walks the
+     * straight line to it, judged from the height it would reach it at; false if it can't reach it.
+     */
+    public static boolean isDangerousDropFrom(BlockGetter level, int x, int feetY, int z, int dx, int dz, int maxFall) {
+        int ring = Math.max(Math.abs(dx), Math.abs(dz));
+        if (ring == 0) return false;
+        int arrival = feetOnTheWayTo(level, x, feetY, z, dx, dz, ring, maxFall);
+        return arrival != UNREACHABLE && isDangerousDrop(level, x + dx, arrival, z + dz, maxFall);
+    }
+
+    private static final int UNREACHABLE = Integer.MIN_VALUE;
+
+    /**
+     * The feet height a mob reaches the last column before (x + dx, z + dz) at, walking the straight
+     * line from (x, feetY, z); {@link #UNREACHABLE} when a wall, an unloaded chunk or a fall deeper
+     * than {@code maxFall} is in the way.
+     */
+    private static int feetOnTheWayTo(BlockGetter level, int x, int feetY, int z, int dx, int dz, int ring, int maxFall) {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        int feet = feetY;
         for (int step = 1; step < ring; step++) {
             int cx = x + Math.round((float) (step * dx) / ring);
             int cz = z + Math.round((float) (step * dz) / ring);
-            if (level instanceof LevelReader reader && !reader.hasChunkAt(cx, cz)) return true;
-            if (!isOpen(level, pos.set(cx, feetY, cz))) return true;
+            if (level instanceof LevelReader reader && !reader.hasChunkAt(cx, cz)) return UNREACHABLE;
+            if (isOpen(level, pos.set(cx, feet, cz))) {
+                int fall = 0;
+                while (isOpen(level, pos.set(cx, feet - fall - 1, cz))) {
+                    if (++fall > maxFall || feet - fall - 1 < level.getMinBuildHeight()) return UNREACHABLE;
+                }
+                feet -= fall;
+            } else if (isOpen(level, pos.set(cx, feet + 1, cz)) && isOpen(level, pos.set(cx, feet + 2, cz))) {
+                feet += 1;
+            } else {
+                return UNREACHABLE;
+            }
         }
-        return false;
+        return feet;
     }
 
     private static boolean isDangerousDropCached(BlockGetter level, int x, int feetY, int z, int maxFall,

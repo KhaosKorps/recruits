@@ -3,6 +3,7 @@ package com.talhanation.recruits.entities.ai.navigation;
 import com.talhanation.recruits.khaoskorps.EdgeCost;
 import com.talhanation.recruits.khaoskorps.EdgeProbe;
 import com.talhanation.recruits.khaoskorps.FollowSettings;
+import com.talhanation.recruits.pathfinding.AsyncPathNavigation;
 import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
@@ -46,6 +47,15 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     private final Long2ByteOpenHashMap edgeDropColumns = newDropColumnCache();
     private final LongOpenHashSet edgeCostedNodes = new LongOpenHashSet();
 
+    /**
+     * KhaosKorps fork: whether this search keeps away from edges: only while the mob follows its owner,
+     * when the follow goal has put edge care on its navigation. Read in prepare(), on the server thread.
+     * Hold and move orders, walls and towers included, are searched as in 1.15.2.
+     */
+    protected boolean edgeCareApplies(Mob mob) {
+        return mob.getNavigation() instanceof AsyncPathNavigation navigation && navigation.hasEdgeCare();
+    }
+
     private static Long2ByteOpenHashMap newDropColumnCache() {
         Long2ByteOpenHashMap cache = new Long2ByteOpenHashMap();
         cache.defaultReturnValue((byte) -1);
@@ -55,8 +65,8 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     public void prepare(PathNavigationRegion region, Mob mob) {
         super.prepare(region, mob);
         FollowSettings settings = FollowSettings.current(); // KhaosKorps fork
-        this.edgeMargin = settings.edgeMargin() ? settings.edgeMarginBlocks() : 0;
-        this.edgeMaxFall = mob.getMaxFallDistance();
+        this.edgeMargin = settings.edgeMargin() && this.edgeCareApplies(mob) ? settings.edgeMarginBlocks() : 0; // KhaosKorps fork
+        this.edgeMaxFall = mob.getMaxFallDistance(); // KhaosKorps fork
         if(mob.isVehicle()){
             this.entityHeight = Mth.floor(mob.getBbHeight() + (float) getEntityHeight());
         }

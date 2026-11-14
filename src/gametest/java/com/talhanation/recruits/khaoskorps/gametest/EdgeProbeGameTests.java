@@ -65,6 +65,17 @@ public class EdgeProbeGameTests {
         helper.succeed();
     }
 
+    /**
+     * A staircase down a block a step is walkable, so it is no drop: from the top step, nothing
+     * within three blocks counts at fall distance 1, though the third step is three blocks lower.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
+    public static void aWalkableSlopeIsNotADrop(GameTestHelper helper) {
+        stairsDown(helper);
+        expectDistance(helper, 2, 7, 3, EdgeProbe.NONE, "on the top step of a staircase going down a block a step");
+        helper.succeed();
+    }
+
     /** Barrier walls and water are not drops: one can't be walked into, the other is swum in. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
     public static void wallsAndWaterAreNotDrops(GameTestHelper helper) {

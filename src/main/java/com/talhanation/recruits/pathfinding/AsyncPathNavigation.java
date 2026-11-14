@@ -2,7 +2,9 @@ package com.talhanation.recruits.pathfinding;
 
 import com.google.common.collect.ImmutableSet;
 import com.talhanation.recruits.config.RecruitsServerConfig;
+import com.talhanation.recruits.khaoskorps.EdgeCare;
 import com.talhanation.recruits.khaoskorps.FollowSettings;
+import com.talhanation.recruits.khaoskorps.PathEdgeTrim;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.protocol.game.DebugPackets;
@@ -34,8 +36,11 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     private boolean isStuck;
     // KhaosKorps fork: the budget the path finder was built with, so each search can scale it (SearchNodesPerBlock).
     private final int baseSearchBudget;
-    // KhaosKorps fork: the search range for the moveTo call in progress, set only by moveTo(Entity, double, float); 0 = the follow range.
+    // KhaosKorps fork: the search range for the moveTo call in progress, set only by moveTo(Entity, double, float, EdgeCare); 0 = the follow range.
     private float searchRange;
+    // KhaosKorps fork: the edge care every path gets while it is set, and the path it was last applied to.
+    @Nullable private EdgeCare edgeCare;
+    @Nullable private Path edgeCareAppliedTo;
 
     public AsyncPathNavigation(PathfinderMob p_26515_, Level p_26516_) {
         super(p_26515_, p_26516_);
@@ -155,6 +160,29 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         }
     }
 
+    /**
+     * KhaosKorps fork: the edge care applied to every path this navigation walks, until it is set to
+     * null. The follow goal sets it while it runs, so a path rebuilt by the navigation itself
+     * (recomputePath, after a block changes near the path) gets it too.
+     */
+    public void setEdgeCare(@Nullable EdgeCare care) {
+        this.edgeCare = care;
+    }
+
+    /**
+     * KhaosKorps fork: applies the edge care the first time a path is seen finished, which covers
+     * sync paths and async ones alike. A path that can't reach its target past a dangerous drop is
+     * cut back, so the mob waits short of the rim (PathEdgeTrim).
+     */
+    private void applyEdgeCare() {
+        if (this.path == null || this.path == this.edgeCareAppliedTo || this.edgeCare == null) return;
+        this.edgeCareAppliedTo = this.path;
+        if (this.edgeCare.trimUnreachable()) {
+            int keep = PathEdgeTrim.pointsToKeep(this.level, this.path, this.mob.getMaxFallDistance(), this.edgeCare.keepBackBlocks());
+            if (keep < this.path.getNodeCount()) this.path.truncateNodes(keep);
+        }
+    }
+
     // Paper start - optimise pathfinding
     private long pathfindFailures = 0;
     private long lastFailure = 0;
@@ -238,6 +266,7 @@ public abstract class AsyncPathNavigation extends PathNavigation {
         }
 
         if (this.path instanceof AsyncPath asyncPath && !asyncPath.isProcessed()) return;
+        this.applyEdgeCare(); // KhaosKorps fork
 
         if (!this.isDone()) {
             if (this.canUpdatePath()) {

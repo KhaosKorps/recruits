@@ -3,6 +3,7 @@ package com.talhanation.recruits.entities.ai;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 
 import com.talhanation.recruits.entities.CaptainEntity;
+import com.talhanation.recruits.khaoskorps.EdgeCare;
 import com.talhanation.recruits.khaoskorps.FollowSettings;
 import com.talhanation.recruits.pathfinding.AsyncPathNavigation;
 import net.minecraft.world.entity.LivingEntity;
@@ -10,10 +11,12 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.entity.vehicle.Boat;
 
+import javax.annotation.Nullable;
+
 
 /**
- * KhaosKorps fork: the start and stop distances, the start-check and repath intervals, the speed and
- * the follow path length come from {@link FollowSettings} each time they are used, so a saved change reaches recruits already
+ * KhaosKorps fork: the start and stop distances, the start-check and repath intervals, the speed,
+ * the follow path length and the edge care come from {@link FollowSettings} each time they are used, so a saved change reaches recruits already
  * in the world. The constructor's values are no longer read; the settings' defaults are the values
  * 1.15.2 used.
  */
@@ -70,7 +73,17 @@ public class RecruitFollowOwnerGoal extends Goal {
         super.stop();
         this.owner = null;
         this.recruit.setIsFollowing(false);
+        this.clearEdgeCare();
         this.recruit.getNavigation().stop();
+    }
+
+    /** The navigation this goal last gave edge care to: the recruit's own, or its horse's while mounted. */
+    @Nullable
+    private AsyncPathNavigation caredNavigation;
+
+    private void clearEdgeCare() {
+        if (this.caredNavigation != null) this.caredNavigation.setEdgeCare(null);
+        this.caredNavigation = null;
     }
 
     public void tick() {
@@ -84,6 +97,9 @@ public class RecruitFollowOwnerGoal extends Goal {
             this.recruit.getLookControl().setLookAt(this.owner, 10.0F, (float)this.recruit.getMaxHeadXRot());
             PathNavigation navigation = this.recruit.getNavigation();
             if (navigation instanceof AsyncPathNavigation asyncNavigation) {
+                if (this.caredNavigation != asyncNavigation) this.clearEdgeCare();   // mounted or dismounted since
+                asyncNavigation.setEdgeCare(EdgeCare.forFollowing(settings));
+                this.caredNavigation = asyncNavigation;
                 asyncNavigation.moveTo(this.owner, settings.followSpeed(), settings.followMaxPathLength());
             } else {
                 navigation.moveTo(this.owner, settings.followSpeed());

@@ -60,6 +60,7 @@ class FollowSettingsDefaultsTest {
         assertTrue(d.edgeMargin(), "the edge margin is on by default");
         assertTrue(d.waitWhenOwnerUnreachable(), "waiting back from the edge when the owner is out of reach is on by default");
         assertEquals(0.5, d.edgeCarefulSpeed(), 0.0, "half speed toward a point beside a drop");
+        assertTrue(d.detourSearch(), "planning a way round a large obstacle is on by default");
     }
 
     @Test

@@ -42,6 +42,7 @@ public final class KhaosKorpsServerConfig {
     public static final ForgeConfigSpec.IntValue EdgeMarginBlocks;
     public static final ForgeConfigSpec.DoubleValue EdgeCarefulSpeed;
     public static final ForgeConfigSpec.BooleanValue WaitWhenOwnerUnreachable;
+    public static final ForgeConfigSpec.BooleanValue DetourSearch;
     public static final ForgeConfigSpec.DoubleValue MovementSpeedMultiplier;
     public static final ForgeConfigSpec.DoubleValue SwimSpeedMultiplier;
     public static final ForgeConfigSpec.BooleanValue PathLog;
@@ -50,7 +51,7 @@ public final class KhaosKorpsServerConfig {
         FollowSettings d = FollowSettings.DEFAULTS;
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
 
-        builder.comment("Creepers. All three apply as soon as this file is saved.").push("creepers");
+        builder.comment("Creepers. Each setting in use applies as soon as this file is saved.").push("creepers");
         PreventCreeperBlockDamage = builder
                 .comment("Creeper explosions don't break blocks.",
                         "They still hurt and knock back players, recruits and animals unless PreventCreeperDamage is also true.")
@@ -59,12 +60,13 @@ public final class KhaosKorpsServerConfig {
                 .comment("Creeper explosions don't hurt or knock back anything: players, recruits, animals or other entities.")
                 .define("PreventCreeperDamage", false);
         CreepersTargetRecruits = builder
-                .comment("Creepers hunt recruits as other monsters do. Applies to creepers that appear after the change.")
+                .comment("Creepers hunt recruits as other monsters do. Applies to creepers that appear after the change.", "NOT USED YET: changing it has no effect in this build.")
                 .define("CreepersTargetRecruits", d.creepersTargetRecruits());
         builder.pop();
 
-        builder.comment("Following and pathfinding. Defaults reproduce Recruits 1.15.2, except EdgeMargin and",
-                "WaitWhenOwnerUnreachable. Each applies as soon as this file is saved.").push("pathfinding");
+        builder.comment("Following and pathfinding. Defaults reproduce Recruits 1.15.2, except the edge care settings",
+                "(EdgeMargin, EdgeCarefulSpeed, WaitWhenOwnerUnreachable) and DetourSearch. Edge care applies while",
+                "following only, never to hold or move orders. Each setting in use applies as soon as this file is saved.").push("pathfinding");
         MaxFallDistance = builder
                 .comment("Highest drop, in blocks, a recruit on foot will path down. 1 in Recruits 1.15.2; vanilla mobs use 3.",
                         "Overrides each recruit's own saved value.")
@@ -102,16 +104,18 @@ public final class KhaosKorpsServerConfig {
         DirtPathPreference = builder
                 .comment("How strongly paths prefer dirt paths.",
                         "ORIGINAL = 1.15.2, which also makes the search run out of budget early;",
-                        "ONCE = the same preference, counted once per path point; OFF = no preference.")
+                        "ONCE = the same preference, counted once per path point; OFF = no preference.",
+                        "NOT USED YET: changing it has no effect in this build.")
                 .defineEnum("DirtPathPreference", d.dirtPathPreference());
         KeepWalkingWhileRepathing = builder
-                .comment("Keep walking the current path while the next one is calculated, instead of stopping (the stop-and-go).")
+                .comment("Keep walking the current path while the next one is calculated, instead of stopping (the stop-and-go).", "NOT USED YET: changing it has no effect in this build.")
                 .define("KeepWalkingWhileRepathing", d.keepWalkingWhileRepathing());
         StaggerFollowRepaths = builder
-                .comment("Spread followers' new paths across ticks, so a group doesn't search all at once.")
+                .comment("Spread followers' new paths across ticks, so a group doesn't search all at once.", "NOT USED YET: changing it has no effect in this build.")
                 .define("StaggerFollowRepaths", d.staggerFollowRepaths());
         EdgeMargin = builder
-                .comment("Keep paths back from drops deeper than the fall distance. On by default.")
+                .comment("While following, keep paths back from drops deeper than the fall distance, and never take a drop of two",
+                        "or more blocks onto a spot beside such a drop. Recruits on horses aren't covered yet. On by default.")
                 .define("EdgeMargin", d.edgeMargin());
         EdgeMarginBlocks = builder
                 .comment("How many blocks back from such a drop the margin reaches.")
@@ -124,14 +128,19 @@ public final class KhaosKorpsServerConfig {
                 .comment("When no path reaches the owner and the best one ends at a drop, stop short of the edge and wait",
                         "instead of crowding it. On by default.")
                 .define("WaitWhenOwnerUnreachable", d.waitWhenOwnerUnreachable());
+        DetourSearch = builder
+                .comment("When following recruits have been stuck about 3 seconds with no path to their owner, and the owner",
+                        "is on the ground, plan a way round in steps of up to 16 blocks, at most 4 times the straight-line",
+                        "distance, through loaded chunks only. One plan per owner, shared by its followers. On by default.")
+                .define("DetourSearch", d.detourSearch());
         MovementSpeedMultiplier = builder
-                .comment("Multiplies every recruit's movement speed. 1.0 = unchanged.")
+                .comment("Multiplies every recruit's movement speed. 1.0 = unchanged.", "NOT USED YET: changing it has no effect in this build.")
                 .defineInRange("MovementSpeedMultiplier", d.movementSpeedMultiplier(), 0.1, 3.0);
         SwimSpeedMultiplier = builder
-                .comment("Multiplies every recruit's swimming speed. 1.0 = unchanged.")
+                .comment("Multiplies every recruit's swimming speed. 1.0 = unchanged.", "NOT USED YET: changing it has no effect in this build.")
                 .defineInRange("SwimSpeedMultiplier", d.swimSpeedMultiplier(), 0.1, 3.0);
         PathLog = builder
-                .comment("Write the path measurement log to logs/recruits-paths/. Off by default.")
+                .comment("Write the path measurement log to logs/recruits-paths/. Off by default.", "NOT USED YET: changing it has no effect in this build.")
                 .define("PathLog", d.pathLog());
         builder.pop();
 
@@ -161,7 +170,7 @@ public final class KhaosKorpsServerConfig {
         FollowSettings.publish(snapshot());
     }
 
-    /** Copies the loaded config into an immutable snapshot. Server thread only. */
+    /** Copies the loaded config into an immutable snapshot. Forge calls it on load and on reload, a reload from its file-watcher thread. */
     static FollowSettings snapshot() {
         double start = FollowStartDistance.get();
         double stop = FollowStopDistance.get();
@@ -179,7 +188,7 @@ public final class KhaosKorpsServerConfig {
                 DirtPathPreference.get(),
                 KeepWalkingWhileRepathing.get(), StaggerFollowRepaths.get(),
                 EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(),
-                WaitWhenOwnerUnreachable.get(),
+                WaitWhenOwnerUnreachable.get(), DetourSearch.get(),
                 MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(),
                 CreepersTargetRecruits.get(),
                 PathLog.get());

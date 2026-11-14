@@ -208,6 +208,20 @@ public final class GameTestSupport {
         }
         FileWatcher.defaultInstance().removeWatch(config.getFullPath());
         forkSettingsFileUnwatched = true;
+        // Forge removes every config file's watch when the server stops; without this one back, its
+        // folder's watch count runs out early and Forge logs a NullPointerException for the last file.
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(
+                (net.minecraftforge.event.server.ServerStoppingEvent event) -> watchForkSettingsFileAgain(config));
+    }
+
+    private static void watchForkSettingsFileAgain(ModConfig config) {
+        if (!forkSettingsFileUnwatched) return;
+        try {
+            FileWatcher.defaultInstance().addWatch(config.getFullPath(), () -> { });
+            forkSettingsFileUnwatched = false;
+        } catch (java.io.IOException e) {
+            Main.LOGGER.error("[KhaosKorps] could not watch {} again at server stop", config.getFullPath(), e);
+        }
     }
 
     private static <T> void resetToDefault(ForgeConfigSpec.ConfigValue<T> value) {

@@ -46,12 +46,53 @@ public class DetourGameTests {
         daytime(helper);
     }
 
-    /** A following recruit finds its way round the ravine to the owner, without falling in. Optional until the detour search is wired. */
-    @GameTest(template = ARENA, timeoutTicks = 1200, required = false)
+    /**
+     * The test owner is never ticked as a player, so it never counts as on the ground by itself; a
+     * detour is only planned for an owner on the ground.
+     */
+    static void standing(GameTestHelper helper, ServerPlayer owner) {
+        helper.onEachTick(() -> owner.setOnGround(true));
+    }
+
+    static final String DETOUR_OFF = "khaoskorps_detour_off";
+
+    @net.minecraft.gametest.framework.BeforeBatch(batch = DETOUR_OFF)
+    public static void detourOff(net.minecraft.server.level.ServerLevel level) {
+        forkSettings(() -> com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.DetourSearch.set(false));
+    }
+
+    @net.minecraft.gametest.framework.AfterBatch(batch = DETOUR_OFF)
+    public static void afterDetourOff(net.minecraft.server.level.ServerLevel level) {
+        resetForkSettings();
+    }
+
+    /** With DetourSearch off, the recruit stays on the north side, waiting back from the ravine. */
+    @GameTest(template = ARENA, timeoutTicks = 700, batch = DETOUR_OFF)
+    public static void withDetourSearchOffARecruitStaysOnItsSideOfTheRavine(GameTestHelper helper) {
+        ravineArena(helper);
+        ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
+        pin(helper, owner, 24.5, 5, 33.5);
+        standing(helper, owner);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 24, 5, 12);
+
+        helper.onEachTick(() -> {
+            if (relative(helper, recruit).z > 19.0 || relative(helper, recruit).x > 36.0) {
+                throw new GameTestAssertException("with DetourSearch off the recruit left the north side: at " + describe(helper, recruit));
+            }
+        });
+        helper.runAtTickTime(680, () -> {
+            removeOwner(helper, owner);
+            helper.succeed();
+        });
+    }
+
+    /** A following recruit finds its way round the ravine to the owner, without falling in. */
+    @GameTest(template = ARENA, timeoutTicks = 1200)
     public static void aFollowingRecruitFindsItsWayAroundARavine(GameTestHelper helper) {
         ravineArena(helper);
         ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
         pin(helper, owner, 24.5, 5, 33.5);
+        standing(helper, owner);
         AbstractRecruitEntity recruit = followingRecruit(helper, owner, 24, 5, 12);
 
         helper.runAfterDelay(1, () -> assertFollowPreconditions(recruit));
@@ -67,6 +108,7 @@ public class DetourGameTests {
                         + String.format("%.1f", Math.sqrt(recruit.distanceToSqr(owner))) + " blocks from the owner, at "
                         + describe(helper, recruit) + "; " + navigationState(helper, recruit));
             }
+            Main.LOGGER.info("[KhaosKorps measure] a following recruit got round the test ravine to its owner at tick {}", helper.getTick());
             removeOwner(helper, owner);
         });
     }

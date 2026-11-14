@@ -3,6 +3,9 @@ package com.talhanation.recruits.khaoskorps.gametest;
 import com.talhanation.recruits.Main;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.init.ModEntityTypes;
+import com.talhanation.recruits.items.RecruitsSpawnEgg;
+import com.talhanation.recruits.network.MessageWriteSpawnEgg;
+import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -35,6 +38,24 @@ public class SaveRoundTripGameTests {
         loaded.discard();
         if (timer != 123) throw new GameTestAssertException("the upkeep timer came back as " + timer + ", not the 123 saved");
         if (ranged) throw new GameTestAssertException("the ranged-fire order came back on; it was saved off");
+        helper.succeed();
+    }
+
+    /** A recruit written to a spawn egg and placed from it again keeps its upkeep timer. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
+    public static void theUpkeepTimerSurvivesASpawnEgg(GameTestHelper helper) {
+        walls(helper);
+        ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
+        AbstractRecruitEntity written = helper.spawn(ModEntityTypes.RECRUIT.get(), 3, 3, 2);
+        written.setUpkeepTimer(1200);
+        CompoundTag egg = new CompoundTag();
+        egg.put("EntityTag", new MessageWriteSpawnEgg().fillRecruitsInfo(new CompoundTag(), written));
+        AbstractRecruitEntity placed = helper.spawn(ModEntityTypes.RECRUIT.get(), 6, 3, 2);
+        RecruitsSpawnEgg.fillRecruit(placed, egg, helper.absolutePos(new BlockPos(6, 3, 2)));
+        int timer = placed.getUpkeepTimer();
+        written.discard();
+        placed.discard();
+        if (timer != 1200) throw new GameTestAssertException("a recruit placed from a spawn egg has upkeep timer " + timer + ", not the 1200 written");
         helper.succeed();
     }
 

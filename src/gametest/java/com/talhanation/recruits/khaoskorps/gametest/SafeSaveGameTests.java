@@ -32,6 +32,29 @@ import java.util.stream.Stream;
 @PrefixGameTestTemplate(false)
 public class SafeSaveGameTests {
 
+    /** A save over an existing file replaces it, and leaves no temporary file. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
+    public static void aSaveReplacesThePreviousFile(GameTestHelper helper) {
+        Path folder = null;
+        try {
+            folder = Files.createTempDirectory("khaoskorps-safe-save");
+            File file = folder.resolve("kktest.dat").toFile();
+            for (String value : new String[]{"old", "new"}) {
+                Store store = new Store(value, false);
+                store.setDirty();
+                store.save(file);
+            }
+            String value = NbtIo.readCompressed(file).getCompound("data").getString("value");
+            if (!"new".equals(value)) throw new GameTestAssertException("after saving \"new\" over \"old\" the file holds \"" + value + "\"");
+            if (Files.exists(folder.resolve("kktest.dat.tmp"))) throw new GameTestAssertException("a save left its temporary file behind");
+        } catch (IOException e) {
+            throw new GameTestAssertException("setup: " + e);
+        } finally {
+            deleteQuietly(folder);
+        }
+        helper.succeed();
+    }
+
     /** A save that fails partway leaves the previous file readable, with its data, and no temporary file. */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
     public static void aSaveThatFailsPartwayLeavesThePreviousFileWhole(GameTestHelper helper) {

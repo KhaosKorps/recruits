@@ -114,7 +114,7 @@ public class RecruitsSpawnEgg extends ForgeSpawnEggItem {
         recruit.setIsOwned(nbt.getBoolean("isOwned"));
         recruit.setCost(nbt.getInt("Cost"));
         recruit.setMountTimer(nbt.getInt("mountTimer"));
-        recruit.setUpkeepTimer(nbt.getInt("UpkeepTimer"));
+        recruit.setUpkeepTimer(nbt.contains("upkeepTimer") ? nbt.getInt("upkeepTimer") : nbt.getInt("UpkeepTimer")); // KhaosKorps fork: the egg is written with upkeepTimer
         recruit.setColor(nbt.getByte("Color"));
         recruit.setBiome(nbt.getByte("Biome"));
 

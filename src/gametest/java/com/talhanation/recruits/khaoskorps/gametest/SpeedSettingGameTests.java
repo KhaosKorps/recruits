@@ -11,6 +11,8 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
@@ -20,6 +22,8 @@ import net.minecraftforge.common.ForgeMod;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
@@ -63,9 +67,18 @@ public class SpeedSettingGameTests {
             expectModifier(recruit, ForgeMod.SWIM_SPEED.get(), RecruitSpeedSettings.SWIM, 0.5, "swim");
             CompoundTag saved = new CompoundTag();
             recruit.addAdditionalSaveData(saved);
-            String attributes = saved.get("Attributes") == null ? "" : saved.get("Attributes").toString();
+            // Each saved attribute lists its saved modifiers, each with its id as a UUID.
+            ListTag attributes = saved.getList("Attributes", Tag.TAG_COMPOUND);
+            if (attributes.isEmpty()) throw new GameTestAssertException("setup: the recruit's save has no attributes");
+            List<UUID> savedModifiers = new ArrayList<>();
+            for (int i = 0; i < attributes.size(); i++) {
+                ListTag modifiers = attributes.getCompound(i).getList("Modifiers", Tag.TAG_COMPOUND);
+                for (int j = 0; j < modifiers.size(); j++) {
+                    if (modifiers.getCompound(j).hasUUID("UUID")) savedModifiers.add(modifiers.getCompound(j).getUUID("UUID"));
+                }
+            }
             for (UUID id : new UUID[]{RecruitSpeedSettings.MOVEMENT, RecruitSpeedSettings.SWIM}) {
-                if (attributes.contains(String.valueOf(id.getMostSignificantBits())) || attributes.contains(id.toString())) {
+                if (savedModifiers.contains(id)) {
                     throw new GameTestAssertException("the recruit's save holds the speed setting's modifier " + id);
                 }
             }

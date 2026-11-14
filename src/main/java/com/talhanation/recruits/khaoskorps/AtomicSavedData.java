@@ -8,17 +8,22 @@ import net.minecraft.world.level.saveddata.SavedData;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 
 /**
  * Saved data written safely. The game writes a saved-data file in place, truncating it first, so a
  * crash, a kill or a full disk partway through a write leaves half a file, which the next load
  * discards whole. This writes the same content to {@code <name>.dat.tmp} first and then moves it over
- * the file in one step, so a failed write leaves the previous file as it was. Otherwise it behaves as
- * the game's: only dirty data is written, a failure is logged, and the data counts as saved afterwards.
+ * the file in one step, so a failed write leaves the previous file as it was. The new file is put on
+ * disk before the move, so a power cut just after it can't leave an empty file under the old name, and
+ * a move refused for a moment (a backup tool or virus scanner holding the file) is tried again a few
+ * times. Otherwise it behaves as the game's: only dirty data is written, a failure is logged, and the
+ * data counts as saved afterwards; the stores mark themselves dirty again at the next autosave.
  */
 public abstract class AtomicSavedData extends SavedData {
 
@@ -32,6 +37,9 @@ public abstract class AtomicSavedData extends SavedData {
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
         try {
             NbtIo.writeCompressed(tag, temporary.toFile());
+            try (FileChannel written = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                written.force(true);
+            }
             moveOver(temporary, target);
         } catch (IOException e) {
             Main.LOGGER.error("[KhaosKorps] Could not save {} to {}; the previous file is kept", this.getClass().getSimpleName(), target, e);
@@ -44,11 +52,28 @@ public abstract class AtomicSavedData extends SavedData {
         this.setDirty(false);
     }
 
+    static final int MOVE_ATTEMPTS = 5;
+    static final long MOVE_RETRY_MILLIS = 10;
+
+    /** Moves the new file over the old one; a refused move is tried again, up to 40 ms in all. */
     private static void moveOver(Path from, Path to) throws IOException {
-        try {
-            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+        for (int attempt = 1; ; attempt++) {
+            try {
+                try {
+                    Files.move(from, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException e) {
+                    Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+                }
+                return;
+            } catch (IOException refused) {
+                if (attempt >= MOVE_ATTEMPTS) throw refused;
+                try {
+                    Thread.sleep(MOVE_RETRY_MILLIS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw refused;
+                }
+            }
         }
     }
 }

@@ -37,7 +37,7 @@ public final class TickQueue {
      * Picks up the tasks submitted since the last call, then runs every task due at or before
      * {@code now}, earliest first, and in submission order when due together. Call from one thread only.
      */
-    public void tick(long now, BiConsumer<Runnable, RuntimeException> onFailure) {
+    public void tick(long now, BiConsumer<Runnable, Throwable> onFailure) {
         Submitted next;
         while ((next = this.submitted.poll()) != null) {
             this.due.add(new Due(now + next.delayTicks(), this.order++, next.task()));
@@ -46,7 +46,10 @@ public final class TickQueue {
             Runnable task = this.due.poll().task();
             try {
                 task.run();
-            } catch (RuntimeException failure) {
+            } catch (Throwable failure) {
+                // A broken task is reported and the rest still run, Errors included (a class another
+                // mod removed, a runaway recursion); running out of memory and the like are not caught.
+                if (failure instanceof VirtualMachineError fatal && !(failure instanceof StackOverflowError)) throw fatal;
                 onFailure.accept(task, failure);
             }
         }

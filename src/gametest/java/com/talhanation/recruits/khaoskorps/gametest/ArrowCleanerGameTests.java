@@ -35,6 +35,20 @@ public class ArrowCleanerGameTests {
         });
     }
 
+    /** The cleaner keeps an arrow from the tick it joins the level, and forgets it once it is removed. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 20)
+    public static void aRemovedArrowLeavesTheCleanersRecord(GameTestHelper helper) {
+        net.minecraft.server.level.ServerLevel level = helper.getLevel();
+        int before = com.talhanation.recruits.khaoskorps.ArrowCleaner.trackedArrows(level);
+        Arrow arrow = helper.spawn(EntityType.ARROW, new Vec3(12.5, 5.0, 2.5));
+        int joined = com.talhanation.recruits.khaoskorps.ArrowCleaner.trackedArrows(level);
+        arrow.discard();
+        int after = com.talhanation.recruits.khaoskorps.ArrowCleaner.trackedArrows(level);
+        if (joined != before + 1) throw new GameTestAssertException("the cleaner held " + before + " arrows, then " + joined + " after one joined");
+        if (after != before) throw new GameTestAssertException("the cleaner still holds the removed arrow: " + after + ", was " + before);
+        helper.succeed();
+    }
+
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 240)
     public static void anArrowAPlayerMayPickUpIsKept(GameTestHelper helper) {
         Arrow arrow = droppedArrow(helper, 6, AbstractArrow.Pickup.ALLOWED, 400);

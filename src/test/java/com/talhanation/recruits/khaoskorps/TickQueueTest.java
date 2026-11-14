@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TickQueueTest {
 
-    private static final java.util.function.BiConsumer<Runnable, RuntimeException> NO_FAILURE =
+    private static final java.util.function.BiConsumer<Runnable, Throwable> NO_FAILURE =
             (task, failure) -> { throw new AssertionError("unexpected failure", failure); };
 
     @Test
@@ -35,10 +35,30 @@ class TickQueueTest {
     }
 
     @Test
+    void aTaskThatThrowsAnErrorIsReportedAndTheOthersStillRun() {
+        TickQueue queue = new TickQueue();
+        List<String> ran = new ArrayList<>();
+        List<Object> failures = new ArrayList<>();
+        queue.submit(() -> { throw new NoClassDefFoundError("a class another mod removed"); }, 0);
+        queue.submit(() -> ran.add("after"), 0);
+        queue.tick(5, (task, failure) -> failures.add(failure));
+        assertEquals(List.of("after"), ran);
+        assertEquals(1, failures.size());
+        assertTrue(failures.get(0) instanceof NoClassDefFoundError, String.valueOf(failures.get(0)));
+    }
+
+    @Test
+    void runningOutOfMemoryIsNotSwallowed() {
+        TickQueue queue = new TickQueue();
+        queue.submit(() -> { throw new OutOfMemoryError("test"); }, 0);
+        org.junit.jupiter.api.Assertions.assertThrows(OutOfMemoryError.class, () -> queue.tick(5, (task, failure) -> { }));
+    }
+
+    @Test
     void aTaskThatThrowsIsReportedAndTheOthersStillRun() {
         TickQueue queue = new TickQueue();
         List<String> ran = new ArrayList<>();
-        List<RuntimeException> failures = new ArrayList<>();
+        List<Throwable> failures = new ArrayList<>();
         queue.submit(() -> { throw new IllegalStateException("broken task"); }, 0);
         queue.submit(() -> ran.add("after"), 0);
         queue.tick(5, (task, failure) -> failures.add(failure));

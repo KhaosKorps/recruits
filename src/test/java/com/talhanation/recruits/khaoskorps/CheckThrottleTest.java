@@ -47,6 +47,21 @@ class CheckThrottleTest {
         assertEquals(2, runs100, "100 ticks: every 50 goal runs");
     }
 
+    /**
+     * At an interval of 1 every throttle's countdown sits at 0, so raising the interval while
+     * running must spread them out again by their seeds, not keep them all in step.
+     */
+    @Test
+    void aLongerIntervalSpreadsTheChecksOutAgain() {
+        List<Integer> firsts = new ArrayList<>();
+        for (int id = 100; id < 105; id++) {
+            CheckThrottle throttle = new CheckThrottle();
+            dueCalls(throttle, 1, id, 3);
+            firsts.add(dueCalls(throttle, 5, id, 5).get(0));
+        }
+        assertEquals(List.of(0, 1, 2, 3, 4), firsts);
+    }
+
     @Test
     void aShorterIntervalTakesEffectAtOnce() {
         CheckThrottle throttle = new CheckThrottle();

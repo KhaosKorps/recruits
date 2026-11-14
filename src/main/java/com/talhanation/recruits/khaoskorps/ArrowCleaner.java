@@ -23,6 +23,12 @@ import java.util.Set;
  * have been stuck in the ground for over 300 ticks. Each level keeps the arrows in it, recorded as
  * they join it (shot, or loaded with their chunk) and dropped as they leave it, so a pass, every 100
  * ticks per level, looks only at those arrows, never at the world. Server thread only.
+ *
+ * An arrow whose chunk merely stops being tracked gets a leave event too, but no join event when
+ * tracking resumes, so only removed arrows are dropped on leaving; removed arrows that left without
+ * an event (unloaded with a chunk that was no longer tracked) are dropped by the next pass. An arrow
+ * refused at joining because its UUID is already in the level is never removed, so it is held until
+ * the server stops.
  */
 public final class ArrowCleaner {
 
@@ -49,7 +55,7 @@ public final class ArrowCleaner {
 
     @SubscribeEvent
     public static void onLeave(EntityLeaveLevelEvent event) {
-        if (event.getEntity() instanceof AbstractArrow arrow && event.getLevel() instanceof ServerLevel level) {
+        if (event.getEntity() instanceof AbstractArrow arrow && arrow.isRemoved() && event.getLevel() instanceof ServerLevel level) {
             Arrows arrows = LEVELS.get(level);
             if (arrows != null) arrows.inLevel.remove(arrow);
         }
@@ -61,18 +67,24 @@ public final class ArrowCleaner {
         Arrows arrows = LEVELS.get(level);
         if (arrows == null || ++arrows.ticksSincePass < PASS_TICKS) return;
         arrows.ticksSincePass = 0;
-        if (!RecruitsServerConfig.AllowArrowCleaning.get()) return;
+        boolean cleaning = RecruitsServerConfig.AllowArrowCleaning.get();
         // Discarding an arrow fires its leave event, which edits the set, so they're discarded after the walk.
         List<AbstractArrow> expired = new ArrayList<>();
         for (Iterator<AbstractArrow> it = arrows.inLevel.iterator(); it.hasNext(); ) {
             AbstractArrow arrow = it.next();
             if (arrow.isRemoved()) {
                 it.remove();
-            } else if (arrow.pickup == AbstractArrow.Pickup.DISALLOWED && arrow.inGroundTime > IN_GROUND_TICKS) {
+            } else if (cleaning && arrow.pickup == AbstractArrow.Pickup.DISALLOWED && arrow.inGroundTime > IN_GROUND_TICKS) {
                 expired.add(arrow);
             }
         }
         expired.forEach(AbstractArrow::discard);
+    }
+
+    /** How many arrows the cleaner holds for a level; for tests. */
+    public static int trackedArrows(ServerLevel level) {
+        Arrows arrows = LEVELS.get(level);
+        return arrows == null ? 0 : arrows.inLevel.size();
     }
 
     /** The sets hold arrows, which hold their level, so nothing is kept past the server. */

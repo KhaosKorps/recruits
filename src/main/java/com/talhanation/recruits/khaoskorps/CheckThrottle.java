@@ -3,17 +3,22 @@ package com.talhanation.recruits.khaoskorps;
 /**
  * Lets a repeated check run once every {@code interval} calls, staggered by a seed (an entity id),
  * so many mobs that start together spread their checks out instead of all checking on the same
- * call. An interval of 1 runs the check on every call. A shorter interval set while running takes
- * effect at once. One per goal; plain Java, covered by JUnit.
+ * call. An interval of 1 runs the check on every call. A changed interval starts again from the
+ * stagger, so a shorter one takes effect at once and a longer one spreads the checks out again.
+ * One per goal; plain Java, covered by JUnit.
  */
 public final class CheckThrottle {
 
     private int countdown = -1;
+    private int interval = -1;
 
     /** Whether the check is due on this call; {@code interval} is in calls, {@code stagger} any int. */
     public boolean due(int interval, int stagger) {
         int every = Math.max(1, interval);
-        if (this.countdown < 0 || this.countdown >= every) this.countdown = Math.floorMod(stagger, every);
+        if (every != this.interval) {
+            this.interval = every;
+            this.countdown = Math.floorMod(stagger, every);
+        }
         if (this.countdown > 0) {
             this.countdown--;
             return false;

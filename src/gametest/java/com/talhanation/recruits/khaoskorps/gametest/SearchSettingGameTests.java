@@ -4,7 +4,6 @@ import com.talhanation.recruits.Main;
 import com.talhanation.recruits.entities.AbstractRecruitEntity;
 import com.talhanation.recruits.khaoskorps.FollowSettings;
 import com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig;
-import com.talhanation.recruits.pathfinding.AsyncPath;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.AfterBatch;
 import net.minecraft.gametest.framework.BeforeBatch;
@@ -136,13 +135,6 @@ public class SearchSettingGameTests {
             removeOwner(helper, owner);
             helper.succeed();
         });
-    }
-
-    /** The recruit's current path once its search has finished, or null. */
-    private static Path finishedPath(AbstractRecruitEntity recruit) {
-        Path path = recruit.getNavigation().getPath();
-        if (path instanceof AsyncPath async && !async.isProcessed()) return null;
-        return path;
     }
 
     private static String endOf(GameTestHelper helper, Path path) {

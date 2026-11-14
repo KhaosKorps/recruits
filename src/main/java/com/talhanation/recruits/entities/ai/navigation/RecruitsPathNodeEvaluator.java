@@ -1,5 +1,10 @@
 package com.talhanation.recruits.entities.ai.navigation;
 
+import com.talhanation.recruits.khaoskorps.EdgeCost;
+import com.talhanation.recruits.khaoskorps.EdgeProbe;
+import com.talhanation.recruits.khaoskorps.FollowSettings;
+import it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2BooleanMap;
@@ -35,8 +40,23 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     private int x;
     private int y;
     private int z;
+    // KhaosKorps fork: edge care for this search, read in prepare() on the server thread; a margin of 0 is off.
+    private int edgeMargin;
+    private int edgeMaxFall;
+    private final Long2ByteOpenHashMap edgeDropColumns = newDropColumnCache();
+    private final LongOpenHashSet edgeCostedNodes = new LongOpenHashSet();
+
+    private static Long2ByteOpenHashMap newDropColumnCache() {
+        Long2ByteOpenHashMap cache = new Long2ByteOpenHashMap();
+        cache.defaultReturnValue((byte) -1);
+        return cache;
+    }
+
     public void prepare(PathNavigationRegion region, Mob mob) {
         super.prepare(region, mob);
+        FollowSettings settings = FollowSettings.current(); // KhaosKorps fork
+        this.edgeMargin = settings.edgeMargin() ? settings.edgeMarginBlocks() : 0;
+        this.edgeMaxFall = mob.getMaxFallDistance();
         if(mob.isVehicle()){
             this.entityHeight = Mth.floor(mob.getBbHeight() + (float) getEntityHeight());
         }
@@ -98,6 +118,12 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
                     node.costMalus = -1.0F;
                     break;
                 }
+            }
+
+            // KhaosKorps fork: a point near a drop deeper than the fall distance costs more, added once per point.
+            if (this.edgeMargin > 0 && node.costMalus >= 0.0F && this.edgeCostedNodes.add(BlockPos.asLong(x, y, z))) {
+                int distance = EdgeProbe.distanceToDangerousDrop(this.level, x, y, z, this.edgeMaxFall, this.edgeMargin, this.edgeDropColumns);
+                node.costMalus += EdgeCost.malus(distance, this.edgeMargin);
             }
         }
 
@@ -178,6 +204,8 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
         this.mob.onPathfindingDone();
         this.pathTypesByPosCache.clear();
         this.collisionCache.clear();
+        this.edgeDropColumns.clear(); // KhaosKorps fork: per-search caches; this evaluator is reused from a pool
+        this.edgeCostedNodes.clear();
         super.done();
     }
 

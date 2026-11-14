@@ -239,6 +239,22 @@ public final class GameTestSupport {
         return entity.position().subtract(origin.getX(), origin.getY(), origin.getZ());
     }
 
+    /** The recruit's current path once its search has finished, or null while it is still being searched. */
+    public static Path finishedPath(AbstractRecruitEntity recruit) {
+        Path path = recruit.getNavigation().getPath();
+        if (path instanceof AsyncPath async && !async.isProcessed()) return null;
+        return path;
+    }
+
+    /** A path's points relative to the template, for failure messages. */
+    public static String pathPoints(GameTestHelper helper, Path path) {
+        StringBuilder points = new StringBuilder();
+        for (int i = 0; i < path.getNodeCount(); i++) {
+            points.append(i == 0 ? "" : " ").append(relativeBlock(helper, path.getNode(i).asBlockPos()));
+        }
+        return points.toString();
+    }
+
     /**
      * What a recruit's navigation is doing, for failure messages: its path's target and progress,
      * whether it stands on the ground, its motion, and any other entity within two blocks.

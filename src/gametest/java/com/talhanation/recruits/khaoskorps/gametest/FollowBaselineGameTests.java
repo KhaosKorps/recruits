@@ -13,9 +13,10 @@ import net.minecraftforge.gametest.PrefixGameTestTemplate;
 import static com.talhanation.recruits.khaoskorps.gametest.GameTestSupport.*;
 
 /**
- * Follow Me as the 1.15.2 release does it, at the default settings: finding the owner, the start
- * and stop distances, a one-block step down, and refusing drops deeper than the fall distance.
- * They passed on the untouched release, so they prove the settings' defaults keep its behaviour.
+ * Follow Me as the 1.15.2 release does it: finding the owner, the start and stop distances, a
+ * one-block step down, and refusing drops deeper than the fall distance. They passed on the
+ * untouched release. They run with edge care off, which the release didn't have, so they prove
+ * every other setting's default keeps the release's behaviour.
  *
  * The pit tests at fall distance 2 and 3 are optional: a recruit allowed to drop two blocks
  * follows its path into a pit it can't climb out of. They fail until that is fixed.
@@ -27,9 +28,22 @@ public class FollowBaselineGameTests {
     private static final String T = HarnessGameTests.EMPTY_TEMPLATE;
     private static final double START_DISTANCE_SQR = 9.0; // 1.15.2's start distance, 3 blocks, squared
     private static final double STOP_DISTANCE_SQR = 7.0;  // 1.15.2's stop distance, about 2.65 blocks, squared
+    private static final String RELEASE = "khaoskorps_release_1_15_2";
+
+    /** The release had no edge care, so this batch turns both edge-care settings off. */
+    @net.minecraft.gametest.framework.BeforeBatch(batch = RELEASE)
+    public static void releaseSettings(net.minecraft.server.level.ServerLevel level) {
+        forkSettings(() -> {
+            com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.EdgeMargin.set(false);
+            com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.WaitWhenOwnerUnreachable.set(false);
+        });
+    }
+
+    @net.minecraft.gametest.framework.AfterBatch(batch = RELEASE)
+    public static void afterReleaseSettings(net.minecraft.server.level.ServerLevel level) { resetForkSettings(); }
 
     /** The owner is found, the path takes the configured route, and the recruit catches up on flat ground. */
-    @GameTest(template = T, timeoutTicks = 260)
+    @GameTest(template = T, timeoutTicks = 260, batch = RELEASE)
     public static void ownerIsFoundAndRecruitFollowsOnFlatGround(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
@@ -51,7 +65,7 @@ public class FollowBaselineGameTests {
     }
 
     /** No follow while the owner is within 3 blocks; it follows beyond 3 and stops within about 2.65. */
-    @GameTest(template = T, timeoutTicks = 200)
+    @GameTest(template = T, timeoutTicks = 200, batch = RELEASE)
     public static void followStartsBeyondThreeBlocksAndStopsWithinAboutTwoPointSix(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 3);
@@ -89,7 +103,7 @@ public class FollowBaselineGameTests {
     }
 
     /** The recruit follows down a one-block step. */
-    @GameTest(template = T, timeoutTicks = 260)
+    @GameTest(template = T, timeoutTicks = 260, batch = RELEASE)
     public static void recruitFollowsDownAOneBlockStep(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, 6, 4);
@@ -115,7 +129,7 @@ public class FollowBaselineGameTests {
      * At fall distance 1 the recruit walks to the rim of a two-block drop and stays on the upper
      * level, short of an owner it could reach by jumping down.
      */
-    @GameTest(template = T, timeoutTicks = 320)
+    @GameTest(template = T, timeoutTicks = 320, batch = RELEASE)
     public static void recruitStopsAtTheRimOfATwoBlockDropAtFallDistanceOne(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, 6, 5);
@@ -144,7 +158,7 @@ public class FollowBaselineGameTests {
     }
 
     /** At fall distance 1 the recruit never enters a two-deep pit between it and the owner. */
-    @GameTest(template = T, timeoutTicks = 320)
+    @GameTest(template = T, timeoutTicks = 320, batch = RELEASE)
     public static void recruitNeverEntersATwoDeepPitAtFallDistanceOne(GameTestHelper helper) {
         pitB(helper, 1, 300);
     }

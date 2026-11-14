@@ -3,6 +3,7 @@ package com.talhanation.recruits.pathfinding;
 import com.google.common.collect.ImmutableSet;
 import com.talhanation.recruits.config.RecruitsServerConfig;
 import com.talhanation.recruits.khaoskorps.EdgeCare;
+import com.talhanation.recruits.khaoskorps.EdgeProbe;
 import com.talhanation.recruits.khaoskorps.FollowSettings;
 import com.talhanation.recruits.khaoskorps.PathEdgeTrim;
 import net.minecraft.core.BlockPos;
@@ -36,11 +37,15 @@ public abstract class AsyncPathNavigation extends PathNavigation {
     private boolean isStuck;
     // KhaosKorps fork: the budget the path finder was built with, so each search can scale it (SearchNodesPerBlock).
     private final int baseSearchBudget;
-    // KhaosKorps fork: the search range for the moveTo call in progress, set only by moveTo(Entity, double, float, EdgeCare); 0 = the follow range.
+    // KhaosKorps fork: the search range for the moveTo call in progress, set only by moveTo(Entity, double, float); 0 = the follow range.
     private float searchRange;
     // KhaosKorps fork: the edge care every path gets while it is set, and the path it was last applied to.
     @Nullable private EdgeCare edgeCare;
     @Nullable private Path edgeCareAppliedTo;
+    // KhaosKorps fork: whether the next path point is beside a dangerous drop, worked out once per point.
+    @Nullable private Path carefulPath;
+    private int carefulNodeIndex = -1;
+    private boolean carefulNode;
 
     public AsyncPathNavigation(PathfinderMob p_26515_, Level p_26516_) {
         super(p_26515_, p_26516_);
@@ -282,9 +287,27 @@ public abstract class AsyncPathNavigation extends PathNavigation {
             DebugPackets.sendPathFindingPacket(this.level, this.mob, this.path, this.maxDistanceToWaypoint);
             if (!this.isDone()) {
                 Vec3 vec32 = this.path.getNextEntityPos(this.mob);
-                this.mob.getMoveControl().setWantedPosition(vec32.x, this.getGroundY(vec32), vec32.z, this.speedModifier);
+                this.mob.getMoveControl().setWantedPosition(vec32.x, this.getGroundY(vec32), vec32.z, this.speedModifier * this.edgeSpeedFactor()); // KhaosKorps fork: careful steps
             }
         }
+    }
+
+    /**
+     * KhaosKorps fork: careful steps. The fraction of its speed the mob keeps while walking toward its
+     * next path point: the edge care's careful speed when that point is right beside a drop deeper than
+     * the fall distance, so momentum can't carry the mob over; otherwise 1. Each point is checked once.
+     */
+    private double edgeSpeedFactor() {
+        if (this.edgeCare == null || this.edgeCare.carefulSpeed() >= 1.0 || this.path == null) return 1.0;
+        int index = this.path.getNextNodeIndex();
+        if (this.path != this.carefulPath || index != this.carefulNodeIndex) {
+            Node next = this.path.getNode(index);
+            this.carefulPath = this.path;
+            this.carefulNodeIndex = index;
+            this.carefulNode = EdgeProbe.distanceToDangerousDrop(this.level, next.x, next.y, next.z,
+                    this.mob.getMaxFallDistance(), 1, null) == 1;
+        }
+        return this.carefulNode ? this.edgeCare.carefulSpeed() : 1.0;
     }
 
     protected void followThePath() {

@@ -40,6 +40,7 @@ public final class KhaosKorpsServerConfig {
     public static final ForgeConfigSpec.BooleanValue StaggerFollowRepaths;
     public static final ForgeConfigSpec.BooleanValue EdgeMargin;
     public static final ForgeConfigSpec.IntValue EdgeMarginBlocks;
+    public static final ForgeConfigSpec.DoubleValue EdgeCarefulSpeed;
     public static final ForgeConfigSpec.BooleanValue WaitWhenOwnerUnreachable;
     public static final ForgeConfigSpec.DoubleValue MovementSpeedMultiplier;
     public static final ForgeConfigSpec.DoubleValue SwimSpeedMultiplier;
@@ -115,6 +116,10 @@ public final class KhaosKorpsServerConfig {
         EdgeMarginBlocks = builder
                 .comment("How many blocks back from such a drop the margin reaches.")
                 .defineInRange("EdgeMarginBlocks", d.edgeMarginBlocks(), 1, 4);
+        EdgeCarefulSpeed = builder
+                .comment("With EdgeMargin on, a recruit walking toward a path point right beside such a drop moves at this",
+                        "fraction of its speed, so it can't carry over the edge. 1.0 = no slowdown.")
+                .defineInRange("EdgeCarefulSpeed", d.edgeCarefulSpeed(), 0.1, 1.0);
         WaitWhenOwnerUnreachable = builder
                 .comment("When no path reaches the owner and the best one ends at a drop, stop short of the edge and wait",
                         "instead of crowding it. On by default.")
@@ -173,7 +178,7 @@ public final class KhaosKorpsServerConfig {
                 FollowMaxPathLength.get(), SearchNodesPerBlock.get(),
                 DirtPathPreference.get(),
                 KeepWalkingWhileRepathing.get(), StaggerFollowRepaths.get(),
-                EdgeMargin.get(), EdgeMarginBlocks.get(),
+                EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(),
                 WaitWhenOwnerUnreachable.get(),
                 MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(),
                 CreepersTargetRecruits.get(),

@@ -186,13 +186,10 @@ public class EdgeSafetyGameTests {
     }
 
     /**
-     * A trail one block wide beside a five-deep ditch (lanes z = 2 and 3, x = 3..12), with follow
-     * paths capped at 8 blocks, so every path along it falls short of the owner at the far end.
-     * The drop is beside the trail, not ahead of it, so no path is cut back: the recruit keeps
-     * moving and reaches the owner.
+     * The cliff trail: flat ground at stand height 5, with a five-deep ditch in lanes z = 2 and 3
+     * for x = 3..12, so lane z = 1 along it is a one-block trail beside a drop.
      */
-    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 500, batch = TRAIL)
-    public static void aRecruitFollowsAlongACliffTrailWhosePathsFallShort(GameTestHelper helper) {
+    private static void cliffTrail(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, CORRIDOR_X_MAX, 5);
         for (int x = 3; x <= 12; x++) {
@@ -201,6 +198,59 @@ public class EdgeSafetyGameTests {
             }
         }
         daytime(helper);
+    }
+
+    /** With the defaults, a recruit following along the cliff trail walks at EdgeCarefulSpeed, half its follow speed. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 400)
+    public static void aRecruitWalksCarefullyAlongACliffTrail(GameTestHelper helper) {
+        speedAlongTheTrail(helper, 1.05 * 0.5, "half its follow speed (EdgeCarefulSpeed 0.5)");
+    }
+
+    /** With edge care off, as in 1.15.2, it walks the trail at its full follow speed. */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 400, batch = EDGE_CARE_OFF_BATCH)
+    public static void withEdgeCareOffARecruitWalksACliffTrailAtFullSpeed(GameTestHelper helper) {
+        speedAlongTheTrail(helper, 1.05, "its full follow speed");
+    }
+
+    /** Records the speed the recruit is driven at while in the middle of the trail (x = 4.5..10.5). */
+    private static void speedAlongTheTrail(GameTestHelper helper, double expected, String what) {
+        cliffTrail(helper);
+        ServerPlayer owner = owner(helper, 14.5, 5, 1.5);
+        pin(helper, owner, 14.5, 5, 1.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 1, 5, 1);
+        int[] samples = {0};
+
+        helper.onEachTick(() -> {
+            Vec3 at = relative(helper, recruit);
+            if (at.y < 4.99) {
+                throw new GameTestAssertException("the recruit fell off the trail: at " + describe(helper, recruit));
+            }
+            if (at.x < 4.5 || at.x > 10.5 || !recruit.isFollowing()) return;
+            double speed = recruit.getMoveControl().getSpeedModifier();
+            if (Math.abs(speed - expected) > 1e-6) {
+                throw new GameTestAssertException("on the trail at " + describe(helper, recruit) + " the recruit is driven at speed "
+                        + String.format("%.3f", speed) + ", not " + String.format("%.3f", expected) + ", " + what
+                        + "; " + navigationState(helper, recruit));
+            }
+            samples[0]++;
+        });
+        helper.succeedWhen(() -> {
+            if (relative(helper, recruit).x <= 10.5 || samples[0] < 10) {
+                throw new GameTestAssertException("the recruit hasn't walked the trail yet: at " + describe(helper, recruit)
+                        + ", " + samples[0] + " speed samples");
+            }
+            removeOwner(helper, owner);
+        });
+    }
+
+    /**
+     * The cliff trail with follow paths capped at 8 blocks, so every path along it falls short of
+     * the owner at the far end. The drop is beside the trail, not ahead of it, so no path is cut
+     * back: the recruit keeps moving and reaches the owner.
+     */
+    @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 500, batch = TRAIL)
+    public static void aRecruitFollowsAlongACliffTrailWhosePathsFallShort(GameTestHelper helper) {
+        cliffTrail(helper);
         ServerPlayer owner = owner(helper, 14.5, 5, 1.5);
         pin(helper, owner, 14.5, 5, 1.5);
         AbstractRecruitEntity recruit = followingRecruit(helper, owner, 1, 5, 1);

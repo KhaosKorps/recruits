@@ -49,6 +49,7 @@ public class AsyncPathfinder extends PathFinder {
         var nodeEvaluator = this.nodeEvaluatorGenerator == null ? this.nodeEvaluator : NodeEvaluatorCache.takeNodeEvaluator(this.nodeEvaluatorGenerator);
         PathLogRecord logged = PathLog.requested(); // KhaosKorps fork: PathLog, the request this search serves
         nodeEvaluator.prepare(p_77428_, p_77429_);
+        createAttributeEntries(p_77429_); // KhaosKorps fork
         Node node = nodeEvaluator.getStart();
 
         if (node == null) {
@@ -88,6 +89,22 @@ public class AsyncPathfinder extends PathFinder {
                 }
             });
             // petal end
+        }
+    }
+
+    /**
+     * KhaosKorps fork: makes every attribute entry the mob has, on the server thread, before its search is handed to
+     * the path worker. An entry is made the first time its attribute is read, and the search reads the mob's
+     * attributes on the worker (its step height); a first read there changed the mob's attribute map while the
+     * server thread used it, and the server crashed with a ConcurrentModificationException in AttributeMap. With
+     * every entry made, the worker only reads the map.
+     *
+     * @param mob the mob the search is for
+     */
+    private static void createAttributeEntries(Mob mob) {
+        net.minecraft.world.entity.ai.attributes.AttributeMap attributes = mob.getAttributes();
+        for (net.minecraft.world.entity.ai.attributes.Attribute attribute : net.minecraftforge.registries.ForgeRegistries.ATTRIBUTES.getValues()) {
+            attributes.getInstance(attribute);
         }
     }
 

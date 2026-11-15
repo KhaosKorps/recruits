@@ -182,7 +182,8 @@
   var explorePlot = null;
   var STEP_STYLE = {
     'reached': '--stepstone', 'trying': '--stepstone', 'failed': '--bad', 'no-ground': '--muted', 'near-drop': '--warn',
-    'visited': '--muted', 'over-budget': '--muted', 'unloaded': '--muted', 'no-start': '--bad'
+    'visited': '--muted', 'over-budget': '--muted', 'unloaded': '--muted', 'no-start': '--bad',
+    'no-way-back': '--bad', 'checking-back': '--muted', 'shifted': '--warn'
   };
   function drawExplore() {
     var p = explorePlot, t = st.t, R = M.recruits;
@@ -229,6 +230,8 @@
       var steps = V.planStepsAt(M, t), chain = { '1': [], '-1': [] };
       steps.forEach(function (s, i) {
         if (i === 0 || s.event === 'direct') chain[s.side] = chain[s.side].length ? chain[s.side] : [s.from];
+        // A side that backs up leaves its last stepping stone; the chain drawn is the way it kept.
+        if (s.event === 'backtrack') { chain[s.side].pop(); return; }
         if (!s.spot || s.event.indexOf('direct') === 0 || s.event === 'side-done') return;
         if (s.event === 'reached') { chain[s.side].push(s.spot); p.dot(s.spot, css('--stepstone'), Math.max(4, p.cell * 0.85)); }
         else if (s.event === 'trying') p.ring(s.spot, css('--stepstone'), Math.max(3, p.cell * 0.7));

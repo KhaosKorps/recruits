@@ -16,10 +16,12 @@ import java.util.List;
  *
  * Both sides of the obstacle are searched in lockstep. At each waypoint a side first checks for a
  * walkable path from there to the goal within the follow path length; if there is none, it tries
- * the spots {@link DetourGeometry} gives, in order, until a search reaches one: that spot becomes
- * its next waypoint. A spot must be standable, loaded, with no dangerous drop within the margin,
- * away from spots already visited, and within the detour's limit. The first side whose direct check
- * succeeds gives the route; when both sides run out, the plan fails.
+ * the spots {@link DetourGeometry} gives, in order, until a search reaches one and a search from it
+ * back to the waypoint reaches too: that spot becomes its next waypoint. A spot without a way back is
+ * a trap (a ledge or hollow reached by a drop that can't be climbed back up) and is passed over. A spot
+ * must be standable, loaded, with no dangerous drop within the margin, away from spots already visited,
+ * and within the detour's limit. The first side whose direct check succeeds gives the route; when both
+ * sides run out, the plan fails.
  *
  * Server thread only. Each search is a {@link DetourSearch}, so with UseAsyncPathfinding on the
  * plan waits for the path worker between steps.
@@ -35,8 +37,10 @@ public final class DetourPlan {
      * unloaded, no-ground, near-drop: a candidate column with no spot to use, because its chunk isn't
      * loaded, there is nothing to stand on within HEIGHT_RANGE of the waypoint's height, or every spot
      * there is near a dangerous drop; visited, over-budget: a spot too near one already visited, or past
-     * the detour's limit; trying, reached, failed, no-start: the search to a candidate spot, and whether
-     * the spot became a waypoint; side-done: the side has no candidates or searches left.
+     * the detour's limit; trying, failed, no-start: the search to a candidate spot; checking-back,
+     * no-way-back: the search from a spot that search reached back to the waypoint, and a spot passed over
+     * because it found none; reached: the spot became a waypoint; side-done: the side has no candidates or
+     * searches left.
      */
     public interface Observer {
         void step(DetourPlan plan, int side, String event, BlockPos from, @Nullable BlockPos spot);
@@ -182,6 +186,9 @@ public final class DetourPlan {
         this.finishedTick = this.level.getGameTime();
     }
 
+    /** What a side's pending search is for. */
+    private enum Pending { DIRECT, TO_SPOT, BACK }
+
     private final class Side {
         final int sign;
         final List<BlockPos> waypoints = new ArrayList<>();
@@ -190,8 +197,10 @@ public final class DetourPlan {
         int cursor = -1;
         List<DetourGeometry.Offset> candidates = List.of();
         @Nullable Path pending;
-        boolean pendingDirect;
+        Pending pendingKind = Pending.DIRECT;
         @Nullable BlockPos pendingTarget;
+        /** A spot a search reached whose way back to the last waypoint is still to be searched; null if none. */
+        @Nullable BlockPos backDue;
         boolean alive = true;
 
         Side(int sign) {
@@ -205,7 +214,7 @@ public final class DetourPlan {
                 if (this.pending instanceof AsyncPath async && !async.isProcessed()) return 0;
                 Path done = this.pending;
                 this.pending = null;
-                if (this.pendingDirect) {
+                if (this.pendingKind == Pending.DIRECT) {
                     if (done.canReach()) {
                         DetourPlan.this.note(this.sign, "direct-reached", this.last(), DetourPlan.this.goal);
                         List<BlockPos> found = new ArrayList<>(this.waypoints);
@@ -215,13 +224,19 @@ public final class DetourPlan {
                     }
                     DetourPlan.this.note(this.sign, "direct-failed", this.last(), DetourPlan.this.goal);
                     this.beginCandidates();
-                } else if (done.canReach()) {
+                } else if (this.pendingKind == Pending.TO_SPOT && done.canReach()) {
+                    // Reached; it becomes a waypoint once the way back from it is found too.
+                    this.backDue = this.pendingTarget;
+                } else if (this.pendingKind == Pending.BACK && done.canReach()) {
                     BlockPos reached = this.pendingTarget;
                     DetourPlan.this.note(this.sign, "reached", this.last(), reached);
                     this.travelled += Math.sqrt(horizontalDistanceSqr(this.last(), reached));
                     this.waypoints.add(reached);
                     DetourPlan.this.visited.add(new int[]{reached.getX(), reached.getZ()});
                     this.cursor = -1;
+                } else if (this.pendingKind == Pending.BACK) {
+                    DetourPlan.this.note(this.sign, "no-way-back", this.last(), this.pendingTarget);
+                    this.cursor++;
                 } else {
                     DetourPlan.this.note(this.sign, "failed", this.last(), this.pendingTarget);
                     this.cursor++;
@@ -234,12 +249,26 @@ public final class DetourPlan {
                 return 0;
             }
             BlockPos from = this.last();
+            if (this.backDue != null) {
+                BlockPos spot = this.backDue;
+                this.backDue = null;
+                Path back = this.search(spot, from, DetourPlan.this.step + 8);
+                if (back != null) {
+                    DetourPlan.this.note(this.sign, "checking-back", from, spot);
+                    this.pending = back;
+                    this.pendingKind = Pending.BACK;
+                    this.pendingTarget = spot;
+                    return 1;
+                }
+                DetourPlan.this.note(this.sign, "no-way-back", from, spot);
+                this.cursor++;
+            }
             if (this.cursor < 0) {
                 Path direct = this.search(from, DetourPlan.this.goal, DetourPlan.this.directRange);
                 if (direct != null) {
                     DetourPlan.this.note(this.sign, "direct", from, DetourPlan.this.goal);
                     this.pending = direct;
-                    this.pendingDirect = true;
+                    this.pendingKind = Pending.DIRECT;
                     return 1;
                 }
                 DetourPlan.this.note(this.sign, "direct-no-start", from, DetourPlan.this.goal);
@@ -272,7 +301,7 @@ public final class DetourPlan {
                 }
                 DetourPlan.this.note(this.sign, "trying", from, spot);
                 this.pending = toSpot;
-                this.pendingDirect = false;
+                this.pendingKind = Pending.TO_SPOT;
                 this.pendingTarget = spot;
                 return 1;
             }

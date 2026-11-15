@@ -25,7 +25,11 @@
     'visited': 'too close to a spot already visited',
     'over-budget': 'past the detour\'s distance limit',
     'trying': 'searching for a way to this spot',
-    'reached': 'reached this spot: it becomes a stepping stone',
+    'reached': 'reached this spot and can walk back from it: it becomes a stepping stone',
+    'checking-back': 'reached this spot; checking for a way back from it to the stepping stone',
+    'no-way-back': 'no way back from this spot (a ledge or hollow with no way up): passed over',
+    'shifted': 'this spot was near a drop or had no ground: moved sideways to one that works',
+    'backtrack': 'this side ran out of spots here and goes back to the stepping stone before',
     'failed': 'no way to this spot found',
     'no-start': 'could not start a search to this spot',
     'side-done': 'this side has no spots left to try'

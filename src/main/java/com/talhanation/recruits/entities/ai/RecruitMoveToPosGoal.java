@@ -28,6 +28,12 @@ public class RecruitMoveToPosGoal extends Goal {
         return this.canUse();
     }
 
+    @Override
+    public void stop() {
+        super.stop();
+        com.talhanation.recruits.khaoskorps.OrderEdgeCare.clear(this.recruit); // KhaosKorps fork: EdgeMarginOnOrders
+    }
+
     //maybe?? start(){
     public void tick() {
         BlockPos blockpos = this.recruit.getMovePos();
@@ -36,6 +42,7 @@ public class RecruitMoveToPosGoal extends Goal {
                 this.timeToRecalcPath = this.recruit.getVehicle() != null ? this.adjustedTickDelay(5) : this.adjustedTickDelay(10);
                 double horizontalDistance = recruit.distanceToSqr(blockpos.getX(), recruit.getY(), blockpos.getZ());
                 if (horizontalDistance >= 10) {
+                    com.talhanation.recruits.khaoskorps.OrderEdgeCare.apply(this.recruit); // KhaosKorps fork: EdgeMarginOnOrders
                     this.recruit.getNavigation().moveTo(blockpos.getX(), blockpos.getY(), blockpos.getZ(), this.speedModifier);
                     if (recruit.horizontalCollision || recruit.minorHorizontalCollision) {
                         this.recruit.getJumpControl().jump();

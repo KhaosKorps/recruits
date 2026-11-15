@@ -35,6 +35,12 @@ public class RecruitHoldPosGoal extends Goal {
         return canUse();
     }
 
+    @Override
+    public void stop() {
+        super.stop();
+        com.talhanation.recruits.khaoskorps.OrderEdgeCare.clear(this.recruit); // KhaosKorps fork: EdgeMarginOnOrders
+    }
+
     public void tick() {
         Vec3 pos = this.recruit.getHoldPos();
         if (pos != null) {
@@ -42,6 +48,7 @@ public class RecruitHoldPosGoal extends Goal {
             if(distance >= 0.3) {
                 if (--this.timeToRecalcPath <= 0) {
                     this.timeToRecalcPath = this.recruit.getVehicle() != null ? this.adjustedTickDelay(5) : this.adjustedTickDelay(10);
+                    com.talhanation.recruits.khaoskorps.OrderEdgeCare.apply(this.recruit); // KhaosKorps fork: EdgeMarginOnOrders
                     this.recruit.getNavigation().moveTo(pos.x(), pos.y(), pos.z(), this.recruit.moveSpeed);
                 }
 

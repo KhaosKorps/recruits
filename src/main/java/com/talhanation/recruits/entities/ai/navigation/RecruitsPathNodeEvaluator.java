@@ -64,9 +64,9 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     private final java.util.List<BlockPos> goals = new java.util.ArrayList<>();
 
     /**
-     * KhaosKorps fork: whether this search keeps away from edges: only while the mob follows its owner,
-     * when the follow goal has put edge care on its navigation. Read in prepare(), on the server thread.
-     * Hold and move orders, walls and towers included, are searched as in 1.15.2.
+     * KhaosKorps fork: whether this search keeps away from edges: while a goal has put edge care on the mob's
+     * navigation, the follow goal while following, and the move and hold orders' goals with EdgeMarginOnOrders
+     * on. Read in prepare(), on the server thread. Fights are searched as in 1.15.2.
      */
     protected boolean edgeCareApplies(Mob mob) {
         return mob.getNavigation() instanceof AsyncPathNavigation navigation && navigation.hasEdgeCare();

@@ -42,7 +42,7 @@ class EdgeCareTest {
                 d.followRepathTicks(), d.followRepathTicksRiding(), d.followStartCheckTicks(),
                 d.followSpeed(), d.followMaxPathLength(), d.searchNodesPerBlock(), d.dirtPathPreference(),
                 d.keepWalkingWhileRepathing(), d.staggerFollowRepaths(),
-                on, d.edgeMarginBlocks(), d.edgeCarefulSpeed(), d.deadEndSearchNodes(), d.dropCostPerBlock(), d.waitWhenOwnerUnreachable(),
+                on, d.edgeMarginOnOrders(), d.edgeMarginBlocks(), d.edgeCarefulSpeed(), d.deadEndSearchNodes(), d.dropCostPerBlock(), d.waitWhenOwnerUnreachable(),
                 d.unreachableDepthWeight(), d.crossOneAtATime(), d.detourSearch(),
                 d.failedPlanMemoryTicks(), d.failedSearchSameWithin(),
                 d.movementSpeedMultiplier(), d.swimSpeedMultiplier(), d.flowingWaterCost(), d.creepersTargetRecruits(),

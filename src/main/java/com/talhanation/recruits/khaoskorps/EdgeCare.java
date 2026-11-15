@@ -32,4 +32,17 @@ public record EdgeCare(int keepBackBlocks, boolean trimUnreachable, int nearOwne
                 settings.waitWhenOwnerUnreachable() ? settings.unreachableDepthWeight() : 0.0,
                 settings.edgeMargin() && settings.crossOneAtATime());
     }
+
+    /**
+     * The care a recruit's path to the spot of a move or hold order gets under {@code settings}: kept back from
+     * drops on the way, and cut back short of the rim when the spot can't be reached past one. The spot itself
+     * may lie at an edge (a wall, a tower, a cliff the player chose), so nothing is kept back near it; and the
+     * group's one-at-a-time crossing belongs to following its owner.
+     */
+    public static EdgeCare forOrders(FollowSettings settings) {
+        return new EdgeCare(settings.edgeMarginBlocks(), settings.waitWhenOwnerUnreachable(), 0,
+                settings.edgeMargin() ? settings.edgeCarefulSpeed() : 1.0,
+                settings.waitWhenOwnerUnreachable() ? settings.unreachableDepthWeight() : 0.0,
+                false);
+    }
 }

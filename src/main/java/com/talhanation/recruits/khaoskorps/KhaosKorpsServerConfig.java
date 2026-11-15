@@ -39,6 +39,7 @@ public final class KhaosKorpsServerConfig {
     public static final ForgeConfigSpec.BooleanValue KeepWalkingWhileRepathing;
     public static final ForgeConfigSpec.BooleanValue StaggerFollowRepaths;
     public static final ForgeConfigSpec.BooleanValue EdgeMargin;
+    public static final ForgeConfigSpec.BooleanValue EdgeMarginOnOrders;
     public static final ForgeConfigSpec.IntValue EdgeMarginBlocks;
     public static final ForgeConfigSpec.DoubleValue EdgeCarefulSpeed;
     public static final ForgeConfigSpec.IntValue DeadEndSearchNodes;
@@ -129,6 +130,11 @@ public final class KhaosKorpsServerConfig {
                 .comment("While following, keep paths back from drops deeper than the fall distance, and never take a drop of two",
                         "or more blocks onto a spot beside such a drop. Recruits on horses aren't covered yet. On by default.")
                 .define("EdgeMargin", d.edgeMargin());
+        EdgeMarginOnOrders = builder
+                .comment("With EdgeMargin on, keep move and hold orders' paths (formations included) back from such drops too,",
+                        "and stop short of the rim when the ordered spot can't be reached past one. The ordered spot itself may",
+                        "lie at an edge, on a wall or a tower: nothing is kept back near it. On by default.")
+                .define("EdgeMarginOnOrders", d.edgeMarginOnOrders());
         EdgeMarginBlocks = builder
                 .comment("How many blocks back from such a drop the margin reaches.")
                 .defineInRange("EdgeMarginBlocks", d.edgeMarginBlocks(), 1, 4);
@@ -258,7 +264,7 @@ public final class KhaosKorpsServerConfig {
                 FollowMaxPathLength.get(), SearchNodesPerBlock.get(),
                 DirtPathPreference.get(),
                 KeepWalkingWhileRepathing.get(), StaggerFollowRepaths.get(),
-                EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(), DeadEndSearchNodes.get(), DropCostPerBlock.get(),
+                EdgeMargin.get(), EdgeMarginOnOrders.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(), DeadEndSearchNodes.get(), DropCostPerBlock.get(),
                 WaitWhenOwnerUnreachable.get(), UnreachableDepthWeight.get(), CrossOneAtATime.get(), DetourSearch.get(),
                 FailedPlanMemorySeconds.get() * 20, FailedSearchSameWithin.get(),
                 MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(), FlowingWaterCost.get(),

@@ -20,7 +20,8 @@ import java.util.List;
  * back to the waypoint reaches too: that spot becomes its next waypoint. A spot without a way back is
  * a trap (a ledge or hollow reached by a drop that can't be climbed back up) and is passed over. A spot
  * must be standable, loaded, with no dangerous drop within the margin, away from spots already visited,
- * and within the detour's limit. The first side whose direct check succeeds gives the route; when both
+ * and within the detour's limit; a column with no such spot is shifted sideways, up to SHIFT_LIMIT blocks
+ * either way across the step, before the direction is given up. The first side whose direct check succeeds gives the route; when both
  * sides run out, the plan fails.
  *
  * Server thread only. Each search is a {@link DetourSearch}, so with UseAsyncPathfinding on the
@@ -36,7 +37,8 @@ public final class DetourPlan {
      * direct, direct-reached, direct-failed, direct-no-start: the check for a walkable path to the goal;
      * unloaded, no-ground, near-drop: a candidate column with no spot to use, because its chunk isn't
      * loaded, there is nothing to stand on within HEIGHT_RANGE of the waypoint's height, or every spot
-     * there is near a dangerous drop; visited, over-budget: a spot too near one already visited, or past
+     * there is near a dangerous drop; shifted: such a column moved sideways to a spot that can be used;
+     * visited, over-budget: a spot too near one already visited, or past
      * the detour's limit; trying, failed, no-start: the search to a candidate spot; checking-back,
      * no-way-back: the search from a spot that search reached back to the waypoint, and a spot passed over
      * because it found none; reached: the spot became a waypoint; side-done: the side has no candidates or
@@ -62,6 +64,8 @@ public final class DetourPlan {
     static final int MAX_SEARCHES = 120;
     /** How far above and below a waypoint's height a candidate spot's ground is looked for. */
     private static final int HEIGHT_RANGE = 8;
+    /** How far sideways, across the step, a candidate column with no spot to use is moved to look for one, in blocks. */
+    static final int SHIFT_LIMIT = 4;
 
     private final ServerLevel level;
     private final Mob walker;
@@ -277,6 +281,17 @@ public final class DetourPlan {
             while (this.cursor < this.candidates.size()) {
                 DetourGeometry.Offset offset = this.candidates.get(this.cursor);
                 BlockPos spot = DetourPlan.this.safeSpot(from.getX() + offset.dx(), from.getY(), from.getZ() + offset.dz());
+                if (spot == null && !"unloaded".equals(DetourPlan.this.spotProblem)) {
+                    // A corridor beside a drop: the column itself is too near the edge, one a little to the side isn't.
+                    String problem = DetourPlan.this.spotProblem;
+                    BlockPos shifted = DetourPlan.this.shiftedSpot(from, offset);
+                    if (shifted != null) {
+                        DetourPlan.this.note(this.sign, "shifted", from, shifted);
+                        spot = shifted;
+                    } else {
+                        DetourPlan.this.spotProblem = problem;
+                    }
+                }
                 if (spot == null) {
                     DetourPlan.this.note(this.sign, DetourPlan.this.spotProblem, from,
                             new BlockPos(from.getX() + offset.dx(), from.getY(), from.getZ() + offset.dz()));
@@ -353,6 +368,29 @@ public final class DetourPlan {
             }
         }
         this.spotProblem = nearDrop ? "near-drop" : "no-ground";
+        return null;
+    }
+
+    /**
+     * A spot to use in a column beside the candidate {@code from + offset}: across the step, 1 to SHIFT_LIMIT blocks
+     * either way, nearest first; null if none.
+     */
+    @Nullable
+    private BlockPos shiftedSpot(BlockPos from, DetourGeometry.Offset offset) {
+        double length = Math.hypot(offset.dx(), offset.dz());
+        if (length < 1e-6) return null;
+        double acrossX = -offset.dz() / length;
+        double acrossZ = offset.dx() / length;
+        int x = from.getX() + offset.dx();
+        int z = from.getZ() + offset.dz();
+        for (int shift = 1; shift <= SHIFT_LIMIT; shift++) {
+            for (int sign : new int[]{1, -1}) {
+                int sx = x + (int) Math.round(acrossX * shift * sign);
+                int sz = z + (int) Math.round(acrossZ * shift * sign);
+                BlockPos spot = this.safeSpot(sx, from.getY(), sz);
+                if (spot != null) return spot;
+            }
+        }
         return null;
     }
 

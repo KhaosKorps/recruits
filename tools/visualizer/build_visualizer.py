@@ -455,7 +455,7 @@ pre.code {{ margin: 0; padding: 10px 0; background: var(--code-bg); overflow-x: 
     <label><input id="ly-heat" type="checkbox"> where all searches looked</label>
   </div>
   <div class="legend">
-    <span><i style="border-color:var(--trail)"></i>followed recruit's walk</span>
+    <span><i style="border-color:var(--trail)"></i>followed recruit's walk: bold up to this tick, faint for the whole run, S where it started, E where it ended</span>
     <span><i style="border-color:var(--good)"></i>others: reached</span><span><i style="border-color:var(--warn)"></i>pit, edge or water</span><span><i style="border-color:var(--bad)"></i>dead</span><span><i style="border-color:var(--muted)"></i>stuck</span>
     <span><i style="border-color:var(--found);border-top-style:dashed"></i>route a search found</span><span><i style="border-color:var(--walk)"></i>part kept after edge care</span>
     <span><i class="box" style="background:var(--stepstone);border-radius:50%"></i>planner's stepping stone reached</span><span><i class="box" style="border:2px solid var(--stepstone);border-radius:50%"></i>being tried</span><span><i style="border-color:var(--stepstone);border-top-style:dashed"></i>the plan's chain</span><span><i class="box" style="border:2px solid var(--stepstone)"></i>where the plan started</span>
@@ -492,7 +492,7 @@ pre.code {{ margin: 0; padding: 10px 0; background: var(--code-bg); overflow-x: 
   <div class="searchgrid">
     <div class="mapbox">
       <canvas id="s-map" aria-label="The search's points, in the order taken"></canvas>
-      <div class="legend"><span><i class="box" style="background:var(--pop-a)"></i>→<i class="box" style="background:var(--pop-b)"></i>points taken, first to last</span><span><i class="box" style="border:2px solid var(--open)"></i>this point's neighbours</span><span><i style="border-color:var(--found);border-top-style:dashed"></i>route found</span><span><i style="border-color:var(--walk)"></i>part kept</span></div>
+      <div class="legend"><span><i class="box" style="background:var(--pop-a)"></i>→<i class="box" style="background:var(--pop-b)"></i>points taken, first to last (the colour is the order, not good or bad)</span><span><i class="box" style="border:2px solid var(--open)"></i>this point's neighbours</span><span><i style="border-color:var(--found);border-top-style:dashed"></i>route found</span><span><i style="border-color:var(--walk)"></i>part kept</span></div>
     </div>
     <div id="s-panel"></div>
   </div>

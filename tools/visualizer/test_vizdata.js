@@ -75,6 +75,26 @@ files.forEach(function (f) {
   });
   check(f, 'the search a recruit walks is one of its own', wrongOwner === 0, walkedTicks + ' ticks sampled, ' + wrongOwner + ' wrong');
 
+  var badWalk = [];
+  m.recruits.forEach(function (r, i) {
+    var whole = V.walkSummary(m, i, r.ticks.length), mid = V.walkSummary(m, i, r.ticks.length >> 1);
+    if (mid.soFar > whole.total + 1e-6 || Math.abs(whole.soFar - whole.total) > 1e-6) badWalk.push(i);
+    if (whole.stillSince >= 0 && V.flatDistance(r.ticks[whole.stillSince], r.ticks[r.ticks.length - 1]) > 1.0) badWalk.push(i + ' still');
+  });
+  check(f, 'walk summaries: the distance so far never passes the whole run, and a recruit marked still stays within a block', badWalk.length === 0, badWalk.slice(0, 5).join(', ') || m.recruits.length + ' recruits');
+
+  var repeats = V.planRepeats(m), badRepeat = [];
+  var stepsOf = function (id) {
+    return [1, -1].map(function (side) {
+      return m.steps.filter(function (s) { return s.plan === id && s.side === side; }).map(function (s) { return s.event + (s.spot || ''); }).join(';');
+    }).join('|');
+  };
+  Object.keys(repeats).forEach(function (p) {
+    if (+repeats[p] >= +p || stepsOf(+p) !== stepsOf(+repeats[p])) badRepeat.push(p + '->' + repeats[p]);
+  });
+  check(f, 'every plan marked a repeat has the same steps as an earlier plan', badRepeat.length === 0,
+    Object.keys(repeats).length + ' repeats of ' + V.planCount(m) + ' plans' + (badRepeat.length ? '; wrong: ' + badRepeat.slice(0, 5) : ''));
+
   var series = V.distanceSeries(m, 0, 10);
   check(f, 'the distance series covers recruit 0 from tick 0', series.length > 0 && series[0][0] === 0, series.length + ' samples');
 

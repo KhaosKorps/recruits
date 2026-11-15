@@ -187,11 +187,61 @@
     return c;
   }
 
+  /**
+   * How far recruit r walked, along the ground: up to tick t and over the whole run; and the tick from
+   * which it stayed within a block of where it ended, or -1 when it was still moving in the last 100 ticks.
+   */
+  function walkSummary(m, r, t) {
+    var ticks = m.recruits[r].ticks, soFar = 0, total = 0, end = ticks.length - 1, still = -1;
+    for (var i = 1; i < ticks.length; i++) {
+      var d = flatDistance(ticks[i - 1], ticks[i]);
+      total += d;
+      if (i <= t) soFar += d;
+    }
+    if (end >= 0) {
+      var i0 = end;
+      while (i0 > 0 && flatDistance(ticks[i0 - 1], ticks[end]) <= 1.0) i0--;
+      if (i0 < end - 100) still = i0;
+    }
+    return { soFar: soFar, total: total, stillSince: still };
+  }
+
+  /**
+   * Plans that repeat an earlier plan exactly: each side takes the same steps to the same spots, so the
+   * same result. The two sides' steps interleave in whatever order their searches finish, so each side
+   * is compared on its own. A map from a plan's id to the first plan it repeats.
+   */
+  function planRepeats(m) {
+    var sides = {}, sig = {}, first = {}, out = {};
+    m.steps.forEach(function (s) {
+      var k = s.plan + '/' + s.side;
+      sides[k] = (sides[k] || '') + s.event + ':' + (s.spot ? s.spot.join(',') : '') + ';';
+    });
+    Object.keys(sides).forEach(function (k) {
+      var parts = k.split('/'), p = parts[0];
+      sig[p] = sig[p] || {};
+      sig[p][parts[1]] = sides[k];
+    });
+    Object.keys(sig).forEach(function (p) { sig[p] = (sig[p]['1'] || '') + '|' + (sig[p]['-1'] || ''); });
+    Object.keys(sig).map(Number).sort(function (a, b) { return a - b; }).forEach(function (p) {
+      if (first[sig[p]] === undefined) first[sig[p]] = p; else out[p] = first[sig[p]];
+    });
+    return out;
+  }
+
+  /** How many plans the run's planner steps belong to. */
+  function planCount(m) {
+    var ids = {};
+    m.steps.forEach(function (s) { ids[s.plan] = true; });
+    return Object.keys(ids).length;
+  }
+
   root.VizData = {
     STEP_WORDS: STEP_WORDS, load: load, blockAt: blockAt, standAt: standAt, isEdge: isEdge, route: route,
     pointsSource: pointsSource, points: points, lastTick: lastTick, tickAt: tickAt, flatDistance: flatDistance,
     distanceSeries: distanceSeries, walkedAt: walkedAt, searchesNear: searchesNear, planAt: planAt,
-    planStepsAt: planStepsAt, routesUntil: routesUntil, outcomeCounts: outcomeCounts, cost: cost
+    planStepsAt: planStepsAt, routesUntil: routesUntil, outcomeCounts: outcomeCounts, cost: cost,
+    walkSummary: walkSummary, planRepeats: planRepeats, planCount: planCount
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.VizData;
 })(typeof window !== 'undefined' ? window : globalThis);

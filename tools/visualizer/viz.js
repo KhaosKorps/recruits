@@ -79,7 +79,7 @@
       if (!res.ok) throw new Error('the page could not fetch ' + r.file + ' (HTTP ' + res.status + ')');
       return res.json();
     }).then(function (data) {
-      M = V.load(data); st.run = i; st.r = 0; st.s = -1; st.k = 0; st.sel = null; st.t = V.lastTick(M);
+      M = V.load(data); M.repeats = V.planRepeats(M); st.run = i; st.r = 0; st.s = -1; st.k = 0; st.sel = null; st.t = V.lastTick(M);
       terrain = null; world3d = null; loading = false;
       $('run-status').textContent = '';
       buildRecruitList();
@@ -202,13 +202,24 @@
       V.routesUntil(M, st.r, t).forEach(function (ri) { p.line(M.routes[ri], rgb(faint, 0.35), 1.2); });
     }
     if (st.layers.walked) {
+      // Each walk is drawn whole and faint for the run, and bold up to this tick, so where it went is always in view.
       R.forEach(function (r, i) {
         if (i === st.r || !r.ticks.length) return;
-        p.line(trail(r.ticks, t, 4), css(outcomeVar(r.outcome)), 1, null, false);
+        var c = hexRgb(css(outcomeVar(r.outcome)));
+        p.line(trail(r.ticks, r.ticks.length, 4), rgb(c, 0.3), 1, null, false);
+        p.line(trail(r.ticks, t, 4), rgb(c, 0.9), 1.2, null, false);
         if (r.death && t >= r.ticks.length) return;
         p.dot(V.tickAt(r.ticks, t), css(outcomeVar(r.outcome)), Math.max(2, p.cell * 0.35), false);
       });
-      p.line(trail(R[st.r].ticks, t, 2), css('--trail'), 2.5, null, false);
+      var mine = R[st.r].ticks;
+      if (mine.length) {
+        var tc = hexRgb(css('--trail'));
+        p.line(trail(mine, mine.length, 2), rgb(tc, 0.35), 4, null, false);
+        p.line(trail(mine, t, 2), css('--trail'), 3, null, false);
+        p.marker(mine[0], 'S', '--trail', false);
+        var last = mine[mine.length - 1];
+        if (V.flatDistance(last, mine[0]) > 1.5) p.marker(last, 'E', '--trail', false);
+      }
     }
     if (st.layers.searches) {
       var walked = V.walkedAt(M, st.r, t);
@@ -276,6 +287,9 @@
     var d = V.flatDistance(here, [M.owner[0] + 0.5, 0, M.owner[2] + 0.5]);
     h.push('<p><b>Recruit ' + st.r + '</b> at ' + xyz(here.slice(0, 3).map(function (v) { return Math.round(v * 10) / 10; })) + ', '
       + fmt(d) + ' blocks from its owner: ' + states.join('; ') + '.</p>');
+    var ws = V.walkSummary(M, st.r, t);
+    h.push('<p>Walked ' + fmt(ws.soFar) + ' blocks by this tick, ' + fmt(ws.total) + ' in the whole run (the bold line, S to E)'
+      + (ws.stillSince >= 0 && t >= ws.stillSince ? '; <span class="bad">it has not moved since tick ' + ws.stillSince + '</span>' : '') + '.</p>');
     var w = V.walkedAt(M, st.r, t);
     if (w) {
       var rl = V.route(M, w).length, link = '<button type="button" class="link" data-inspect="' + w.id + '">#' + w.id + '</button>';
@@ -287,8 +301,10 @@
     // the planner
     var plan = V.planAt(M, t), steps = V.planStepsAt(M, t), counts = {};
     steps.forEach(function (s) { counts[s.event] = (counts[s.event] || 0) + 1; });
-    var ph = ['<p>' + (plan ? 'Detour plan for the owner: <b>' + esc(plan.status) + '</b>, ' + plan.searches + ' searches so far'
-      + (plan.route && plan.route.length ? ', ' + plan.route.length + ' stepping stones' : '') : 'No detour plan yet') + '.</p>'];
+    var pid = steps.length ? steps[0].plan : -1, repeatOf = pid >= 0 && M.repeats ? M.repeats[pid] : undefined;
+    var ph = ['<p>' + (plan ? 'Detour plan' + (pid >= 0 ? ' ' + (pid + 1) + ' of ' + V.planCount(M) : '') + ' for the owner: <b>' + esc(plan.status) + '</b>, ' + plan.searches + ' searches so far'
+      + (plan.route && plan.route.length ? ', ' + plan.route.length + ' stepping stones' : '') : 'No detour plan yet') + '.'
+      + (repeatOf !== undefined ? ' <span class="bad">Identical to plan ' + (repeatOf + 1) + ': the same spots tried, with the same result.</span>' : '') + '</p>'];
     if (steps.length) {
       ph.push('<p class="dim">This plan\'s steps so far: ' + Object.keys(counts).map(function (k) { return esc(k) + ' ' + counts[k]; }).join(', ') + '.</p><ol class="steps">');
       steps.slice(-8).forEach(function (s) {

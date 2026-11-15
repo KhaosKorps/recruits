@@ -111,6 +111,10 @@ public class VillagerNobleEntity extends AbstractRecruitEntity implements ICanTr
         nbt.putInt("TraderProgress", this.getTraderProgress());
         nbt.putInt("TraderLevel", this.getTraderLevel());
         nbt.putString("Type", this.getTraderType());
+        // KhaosKorps fork: the refill timers are saved, so a noble's offers keep refilling across chunk unloads and
+        // restarts. Before, both started from zero each time the noble was loaded.
+        nbt.putInt("RestoreTimer", this.restoreTimer);
+        nbt.putInt("RestoreTimeLongTime", this.restoreTimeLongTime);
     }
 
     @Override
@@ -120,6 +124,8 @@ public class VillagerNobleEntity extends AbstractRecruitEntity implements ICanTr
         this.setTraderProgress(nbt.getInt("TraderProgress"));
         this.setTraderLevel(nbt.getInt("TraderLevel"));
         this.setTraderType(nbt.getString("Type"));
+        this.restoreTimer = nbt.getInt("RestoreTimer");
+        this.restoreTimeLongTime = nbt.getInt("RestoreTimeLongTime");
     }
 
         //ATTRIBUTES

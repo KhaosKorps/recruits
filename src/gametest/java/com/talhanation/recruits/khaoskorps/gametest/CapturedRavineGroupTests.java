@@ -73,8 +73,40 @@ public class CapturedRavineGroupTests {
         return tests;
     }
 
+    /**
+     * The DirtPathPreference the group runs use: the system property {@code khaoskorps.groupDirtPath}
+     * (gradlew runGameTestServer -PgroupDirtPath=OFF), or the setting's default when it is empty.
+     */
+    @javax.annotation.Nullable
+    private static com.talhanation.recruits.khaoskorps.FollowSettings.DirtPathPreference groupDirtPath() {
+        String value = System.getProperty("khaoskorps.groupDirtPath", "").trim();
+        return value.isEmpty() ? null : com.talhanation.recruits.khaoskorps.FollowSettings.DirtPathPreference.valueOf(value.toUpperCase(java.util.Locale.ROOT));
+    }
+
+    /**
+     * Force-loads, or releases, every chunk the arena covers. The test world has no real player, so
+     * only chunks the GameTest framework keeps loaded tick their entities; part of an arena this
+     * large can fall outside them, and recruits spawned there never move.
+     *
+     * @param helper the test
+     * @param forced true to load the chunks, false to release them
+     */
+    private static void forceArena(GameTestHelper helper, boolean forced) {
+        BlockPos a = helper.absolutePos(BlockPos.ZERO), b = helper.absolutePos(new BlockPos(SIZE_X - 1, 0, SIZE_Z - 1));
+        for (int cx = Math.min(a.getX(), b.getX()) >> 4; cx <= Math.max(a.getX(), b.getX()) >> 4; cx++) {
+            for (int cz = Math.min(a.getZ(), b.getZ()) >> 4; cz <= Math.max(a.getZ(), b.getZ()) >> 4; cz++) {
+                helper.getLevel().setChunkForced(cx, cz, forced);
+            }
+        }
+    }
+
     private static void groupRun(GameTestHelper helper, String name, int[] from, int[] to, int size, long seed) {
-        forkSettings(() -> KhaosKorpsServerConfig.MaxFallDistance.set(3));
+        forceArena(helper, true);
+        var dirtPath = groupDirtPath();
+        forkSettings(() -> {
+            KhaosKorpsServerConfig.MaxFallDistance.set(3);
+            if (dirtPath != null) KhaosKorpsServerConfig.DirtPathPreference.set(dirtPath);
+        });
         try {
             CapturedRavineGameTests.fenceIn(helper);
             ServerPlayer owner = owner(helper, to[0] + 0.5, to[1], to[2] + 0.5);
@@ -88,6 +120,20 @@ public class CapturedRavineGroupTests {
             for (int[] spawn : spawns) recorder.add(followingRecruit(helper, owner, spawn[0], spawn[1], spawn[2]));
             helper.runAfterDelay(1, () -> assertFollowPreconditions(recorder.members().get(0).recruit));
             boolean[] ended = {false};
+            // A recruit that hasn't ticked is in a chunk that isn't ticking entities: the run would count it stuck.
+            helper.runAfterDelay(20, () -> {
+                for (GroupRecorder.Member m : recorder.members()) {
+                    if (m.recruit.tickCount < 10) {
+                        ended[0] = true;
+                        forceArena(helper, false);
+                        resetForkSettings();
+                        throw new GameTestAssertException("setup: a recruit at " + m.recruit.blockPosition().subtract(helper.absolutePos(BlockPos.ZERO)).toShortString()
+                                + " has ticked " + m.recruit.tickCount + " times in 20 ticks; its chunk isn't ticking entities (entity ticking there: "
+                                + helper.getLevel().isPositionEntityTicking(m.recruit.blockPosition()) + ", chunk forced: "
+                                + helper.getLevel().getForcedChunks().contains(m.recruit.chunkPosition().toLong()) + ")");
+                    }
+                }
+            });
             helper.onEachTick(() -> {
                 if (ended[0]) return;
                 try {
@@ -96,16 +142,22 @@ public class CapturedRavineGroupTests {
                     for (GroupRecorder.Member m : recorder.members()) allDone &= m.reachedTick >= 0 || m.deathTick >= 0;
                     if (allDone || helper.getTick() >= RUN_TICKS) {
                         ended[0] = true;
-                        judge(helper, recorder, owner, name, allDone);
+                        try {
+                            judge(helper, recorder, owner, name, allDone);
+                        } finally {
+                            forceArena(helper, false);
+                        }
                     }
                 } catch (RuntimeException failure) {
                     ended[0] = true;
+                    forceArena(helper, false);
                     resetForkSettings();
                     recorder.finish("failed", String.valueOf(failure));
                     throw failure;
                 }
             });
         } catch (RuntimeException setupFailure) {
+            forceArena(helper, false);
             resetForkSettings();
             throw setupFailure;
         }

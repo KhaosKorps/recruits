@@ -99,6 +99,8 @@ minecraft {
             // The long group tests on the captured ravine (CapturedRavineGroupTests) run only when asked:
             // gradlew runGameTestServer -PgroupTests=pilot (or =all).
             property 'khaoskorps.groupTests', (project.findProperty('groupTests') ?: '').toString()
+            // gradlew runGameTestServer -PgroupTests=all -PgroupDirtPath=OFF (or ONCE): the group runs' dirt-path setting.
+            property 'khaoskorps.groupDirtPath', (project.findProperty('groupDirtPath') ?: '').toString()
             mods {
                 recruits {
                     source sourceSets.main

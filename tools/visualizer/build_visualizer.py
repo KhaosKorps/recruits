@@ -324,7 +324,7 @@ page = f"""<meta charset="utf-8">
   --good: #2f7a4f; --bad: #b8332b; --warn: #c06a12;
   --t-low: #3b4a40; --t-high: #c9d3c2; --t-wall: #2a2f2b; --water: #3f7fc0; --lava: #d4552b;
   --pop-a: #f2d16b; --pop-b: #b0367a; --open: #1f8a8a; --found: #1659d6; --walk: #7c3aed; --trail: #0f8f5f; --plan: #c2410c;
-  --recruit: #e11d48; --heat: #ea580c; --leaf: #3f8f3a; --marker: #ffffff; --marker-fg: #111111; --drop-line: #e07a1f; --step-line: rgba(0,0,0,0.18);
+  --recruit: #e11d48; --heat: #ea580c; --leaf: #3f8f3a; --stepstone: #b7791f; --marker: #ffffff; --marker-fg: #111111; --drop-line: #e07a1f; --step-line: rgba(0,0,0,0.18);
   --stone: #8a918a; --air: #eef1ec; --code-bg: #f0f2ee; --k: #7a3b8f; --t: #1f6f8b; --s: #8a5a12; --c: #6b776d; --n: #b0442a; --fk: #2f7a4f;
   --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif; --body: "Inter", "Segoe UI", system-ui, sans-serif; --mono: "JetBrains Mono", Consolas, monospace;
 }}
@@ -333,14 +333,14 @@ page = f"""<meta charset="utf-8">
   --good: #6cc28f; --bad: #f0857a; --warn: #f0a24a;
   --t-low: #26302a; --t-high: #a7b4a0; --t-wall: #0c0e0c; --water: #3a78bd; --lava: #e0602f;
   --pop-a: #f2d16b; --pop-b: #d14a95; --open: #45c4c4; --found: #6ea0ff; --walk: #b18cff; --trail: #34d399; --plan: #fb923c;
-  --recruit: #fb7185; --heat: #fb923c; --leaf: #4fa84a; --marker: #ffffff; --marker-fg: #111111; --drop-line: #ff9a3c; --step-line: rgba(255,255,255,0.16);
+  --recruit: #fb7185; --heat: #fb923c; --leaf: #4fa84a; --stepstone: #fbbf24; --marker: #ffffff; --marker-fg: #111111; --drop-line: #ff9a3c; --step-line: rgba(255,255,255,0.16);
   --stone: #5d645e; --air: #1f2420; --code-bg: #0f120f; --k: #d4a2e6; --t: #7cc6de; --s: #e2b86a; --c: #7f8c81; --n: #f0937a; --fk: #8fd8aa; color-scheme: dark; }} }}
 :root[data-theme="dark"] {{
   --bg: #121512; --surface: #1a1e1b; --fg: #e3e8e2; --muted: #9aa69c; --line: #2c342e; --accent: #6cc28f;
   --good: #6cc28f; --bad: #f0857a; --warn: #f0a24a;
   --t-low: #26302a; --t-high: #a7b4a0; --t-wall: #0c0e0c; --water: #3a78bd; --lava: #e0602f;
   --pop-a: #f2d16b; --pop-b: #d14a95; --open: #45c4c4; --found: #6ea0ff; --walk: #b18cff; --trail: #34d399; --plan: #fb923c;
-  --recruit: #fb7185; --heat: #fb923c; --leaf: #4fa84a; --marker: #ffffff; --marker-fg: #111111; --drop-line: #ff9a3c; --step-line: rgba(255,255,255,0.16);
+  --recruit: #fb7185; --heat: #fb923c; --leaf: #4fa84a; --stepstone: #fbbf24; --marker: #ffffff; --marker-fg: #111111; --drop-line: #ff9a3c; --step-line: rgba(255,255,255,0.16);
   --stone: #5d645e; --air: #1f2420; --code-bg: #0f120f; --k: #d4a2e6; --t: #7cc6de; --s: #e2b86a; --c: #7f8c81; --n: #f0937a; --fk: #8fd8aa; color-scheme: dark; }}
 body {{ background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.55;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 64px; }}
@@ -458,7 +458,7 @@ pre.code {{ margin: 0; padding: 10px 0; background: var(--code-bg); overflow-x: 
     <span><i style="border-color:var(--trail)"></i>followed recruit's walk</span>
     <span><i style="border-color:var(--good)"></i>others: reached</span><span><i style="border-color:var(--warn)"></i>pit, edge or water</span><span><i style="border-color:var(--bad)"></i>dead</span><span><i style="border-color:var(--muted)"></i>stuck</span>
     <span><i style="border-color:var(--found);border-top-style:dashed"></i>route a search found</span><span><i style="border-color:var(--walk)"></i>part kept after edge care</span>
-    <span><i class="box" style="background:var(--good)"></i>stepping stone reached</span><span><i class="box" style="background:var(--accent)"></i>being tried</span>
+    <span><i class="box" style="background:var(--stepstone);border-radius:50%"></i>planner's stepping stone reached</span><span><i class="box" style="border:2px solid var(--stepstone);border-radius:50%"></i>being tried</span><span><i style="border-color:var(--stepstone);border-top-style:dashed"></i>the plan's chain</span><span><i class="box" style="border:2px solid var(--stepstone)"></i>where the plan started</span>
     <span>✕ <span style="color:var(--bad)">no way there</span> · <span style="color:var(--warn)">near a deadly drop</span> · nothing to stand on</span>
     <span><i class="box" style="background:var(--heat)"></i>searched here</span><span><i style="border-color:var(--drop-line)"></i>drop deeper than the fall distance</span>
   </div>

@@ -155,6 +155,11 @@
     c.strokeStyle = color; c.lineWidth = 2.4;
     c.beginPath(); c.moveTo(x + m, z + m); c.lineTo(x + cell - m, z + cell - m); c.moveTo(x + cell - m, z + m); c.lineTo(x + m, z + cell - m); c.stroke();
   };
+  Plot.prototype.ring = function (p, color, size) {
+    var c = this.ctx;
+    c.strokeStyle = color; c.lineWidth = 2;
+    c.beginPath(); c.arc((p[0] + 0.5) * this.cell, (p[2] + 0.5) * this.cell, size, 0, Math.PI * 2); c.stroke();
+  };
   Plot.prototype.dot = function (p, color, size, centred) {
     var c = this.ctx, off = centred === false ? 0 : 0.5;
     c.fillStyle = color; c.beginPath(); c.arc((p[0] + off) * this.cell, (p[2] + off) * this.cell, size, 0, Math.PI * 2); c.fill();
@@ -176,7 +181,7 @@
   // ---------- explore: the map ----------
   var explorePlot = null;
   var STEP_STYLE = {
-    'reached': '--good', 'trying': '--accent', 'failed': '--bad', 'no-ground': '--muted', 'near-drop': '--warn',
+    'reached': '--stepstone', 'trying': '--stepstone', 'failed': '--bad', 'no-ground': '--muted', 'near-drop': '--warn',
     'visited': '--muted', 'over-budget': '--muted', 'unloaded': '--muted', 'no-start': '--bad'
   };
   function drawExplore() {
@@ -214,12 +219,16 @@
       steps.forEach(function (s, i) {
         if (i === 0 || s.event === 'direct') chain[s.side] = chain[s.side].length ? chain[s.side] : [s.from];
         if (!s.spot || s.event.indexOf('direct') === 0 || s.event === 'side-done') return;
-        if (s.event === 'reached') { chain[s.side].push(s.spot); p.dot(s.spot, css('--good'), Math.max(4, p.cell * 0.85)); }
-        else if (s.event === 'trying') p.dot(s.spot, css('--accent'), Math.max(3, p.cell * 0.6));
+        if (s.event === 'reached') { chain[s.side].push(s.spot); p.dot(s.spot, css('--stepstone'), Math.max(4, p.cell * 0.85)); }
+        else if (s.event === 'trying') p.ring(s.spot, css('--stepstone'), Math.max(3, p.cell * 0.7));
         else p.cross(s.spot, css(STEP_STYLE[s.event] || '--muted'));
       });
-      ['1', '-1'].forEach(function (k) { p.line(chain[k], css('--good'), 1.8, [2, 3]); });
-      if (steps.length) p.marker(steps[0].from, 'P', '--plan');
+      ['1', '-1'].forEach(function (k) { p.line(chain[k], css('--stepstone'), 2.2, [5, 3]); });
+      // The plan's start is where the stuck recruit stood: a gold square round that block, so R stays visible.
+      if (steps.length) {
+        p.ctx.strokeStyle = css('--stepstone'); p.ctx.lineWidth = 2.5;
+        p.ctx.strokeRect((steps[0].from[0] - 0.6) * p.cell, (steps[0].from[2] - 0.6) * p.cell, p.cell * 2.2, p.cell * 2.2);
+      }
     }
     var me = V.tickAt(R[st.r].ticks, t);
     if (me) p.marker(me, 'R', '--recruit', false);

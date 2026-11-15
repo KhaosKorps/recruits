@@ -265,7 +265,7 @@ public class PathLogGameTests {
             char thread = RecruitsServerConfig.UseAsyncPathfinding.get() ? PathLogRecord.WORKER : PathLogRecord.INLINE;
             for (String[] row : rows) {
                 boolean nodesKnown = thread != PathLogRecord.WORKER || Integer.parseInt(row[10]) > 0;
-                if (!row[5].equals("F") || !row[4].equals("R") || row[15].charAt(0) != thread || Integer.parseInt(row[8]) <= 0 || !nodesKnown) {
+                if (!row[5].equals("F") || !row[4].equals("R") || !ranOnExpectedThread(row) || Integer.parseInt(row[8]) <= 0 || !nodesKnown) {
                     throw new GameTestAssertException("expected a follow search by the recruit navigation on thread " + thread
                             + " with a budget: " + String.join(",", row));
                 }
@@ -281,7 +281,24 @@ public class PathLogGameTests {
         });
     }
 
-    /** G3-3 with three followers: every row's thread is the one searches run on. */
+    /**
+     * Whether a path row's search ran where it should: on a path worker (W) with async searches on, or
+     * inline (I) with them off. With them on, the server thread (M) is right too when the row shows the
+     * worker queue was full at its request, since a full queue overflows onto the server thread; the
+     * headless test server ticks faster than real time and runs a batch's tests together, so the one
+     * worker can fall behind.
+     *
+     * @param row a row of the path log, split on commas
+     * @return true if the row's thread is one its search may run on
+     */
+    static boolean ranOnExpectedThread(String[] row) {
+        if (!RecruitsServerConfig.UseAsyncPathfinding.get()) return row[15].charAt(0) == PathLogRecord.INLINE;
+        if (row[15].charAt(0) == PathLogRecord.WORKER) return true;
+        int capacity = Math.max(1, RecruitsServerConfig.AsyncPathfindingThreadsCount.get()) * 8;
+        return row[15].equals("M") && Integer.parseInt(row[9]) >= capacity;
+    }
+
+    /** G3-3 with three followers: every row's thread is the one searches run on ({@link #ranOnExpectedThread}). */
     @GameTest(template = HarnessGameTests.EMPTY_TEMPLATE, timeoutTicks = 220, batch = LOG_ON)
     public static void withPathLogOnThreeFollowersSearchOnTheExpectedThread(GameTestHelper helper) {
         Scene scene = scene(helper, 3, Long.MAX_VALUE);
@@ -289,13 +306,12 @@ public class PathLogGameTests {
         helper.runAtTickTime(200, () -> {
             removeOwner(helper, scene.owner);
             scene.recruits.forEach(AbstractRecruitEntity::discard);
-            String thread = RecruitsServerConfig.UseAsyncPathfinding.get() ? "W" : "I";
             int rows = 0;
             for (AbstractRecruitEntity recruit : scene.recruits) {
                 for (String[] row : pathRows(recruit, start)) {
                     rows++;
-                    if (!row[15].equals(thread)) {
-                        throw new GameTestAssertException("expected thread " + thread + ": " + String.join(",", row));
+                    if (!ranOnExpectedThread(row)) {
+                        throw new GameTestAssertException("expected thread " + (RecruitsServerConfig.UseAsyncPathfinding.get() ? "W" : "I") + ": " + String.join(",", row));
                     }
                 }
             }

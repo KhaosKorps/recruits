@@ -96,7 +96,7 @@ public class DetourGameTests {
     /** A following recruit finds its way round the ravine to the owner, without falling in. */
     @GameTest(template = ARENA, timeoutTicks = 1200)
     public static void aFollowingRecruitFindsItsWayAroundARavine(GameTestHelper helper) {
-        followRoundTheRavine(helper);
+        followRoundTheRavine(helper, "aFollowingRecruitFindsItsWayAroundARavine");
     }
 
     /**
@@ -231,7 +231,7 @@ public class DetourGameTests {
      */
     @GameTest(template = ARENA, timeoutTicks = 2400, batch = SLOW_START_CHECK)
     public static void withAStartCheckOf100TicksAFollowingRecruitStillGoesRoundTheRavine(GameTestHelper helper) {
-        followRoundTheRavine(helper);
+        followRoundTheRavine(helper, "withAStartCheckOf100TicksAFollowingRecruitStillGoesRoundTheRavine");
     }
 
     /**
@@ -355,19 +355,28 @@ public class DetourGameTests {
         }
     }
 
-    /** The ravine follow scene: the recruit north, the owner south, the recruit must go round without falling in. */
-    static void followRoundTheRavine(GameTestHelper helper) {
+    /**
+     * The ravine follow scene: the recruit north, the owner south, the recruit must go round without
+     * falling in. The run is recorded (runs/&lt;name&gt;.json.gz) for the visualiser, so a fall can be replayed.
+     */
+    static void followRoundTheRavine(GameTestHelper helper, String name) {
         ravineArena(helper);
         ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
         pin(helper, owner, 24.5, 5, 33.5);
         standing(helper, owner);
         AbstractRecruitEntity recruit = followingRecruit(helper, owner, 24, 5, 12);
+        GroupRecorder recorder = new GroupRecorder(name, helper, owner, 48, 12, 48, "{}", 0, 0, 60);
+        GroupRecorder.Member member = recorder.add(recruit);
 
         helper.runAfterDelay(1, () -> assertFollowPreconditions(recruit));
         helper.onEachTick(() -> {
+            recorder.tick();
             if (relative(helper, recruit).y < 4.99) {
-                throw new GameTestAssertException("the recruit fell into the ravine at tick " + helper.getTick()
-                        + ": at " + describe(helper, recruit));
+                String why = "the recruit fell into the ravine at tick " + helper.getTick() + ": at " + describe(helper, recruit)
+                        + "; " + navigationState(helper, recruit);
+                member.outcome = "pit";
+                recorder.finish("failed", why);
+                throw new GameTestAssertException(why);
             }
         });
         helper.succeedWhen(() -> {
@@ -377,6 +386,8 @@ public class DetourGameTests {
                         + describe(helper, recruit) + "; " + navigationState(helper, recruit));
             }
             Main.LOGGER.info("[KhaosKorps measure] a following recruit got round the test ravine to its owner at tick {}", helper.getTick());
+            member.outcome = "reached";
+            recorder.finish("passed", "reached its owner at tick " + helper.getTick());
             removeOwner(helper, owner);
         });
     }

@@ -174,7 +174,7 @@ public class KeepWalkingGameTests {
     /** The ravine follow with keep-walking on: the detour's checks read the newest path, not the one being walked. */
     @GameTest(template = DetourGameTests.ARENA, timeoutTicks = 1200, batch = KEEP_WALKING)
     public static void withKeepWalkingAFollowingRecruitFindsItsWayAroundARavine(GameTestHelper helper) {
-        DetourGameTests.followRoundTheRavine(helper);
+        DetourGameTests.followRoundTheRavine(helper, "withKeepWalkingAFollowingRecruitFindsItsWayAroundARavine");
     }
 
     /** Handing the walked path back once its waiting search has finished doesn't put the old path back over the new one. */

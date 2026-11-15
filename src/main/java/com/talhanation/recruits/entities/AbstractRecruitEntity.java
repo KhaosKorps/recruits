@@ -2040,6 +2040,15 @@ public abstract class AbstractRecruitEntity extends AbstractInventoryEntity{
         if (this.getCommandSenderWorld().isClientSide()) return;
 
         this.needsGroupUpdate = false;
+
+        // KhaosKorps fork: a dismissal is marked on the recruits a disbanded group had, not on the group.
+        RecruitsGroup.DisbandContext pendingDisband = RecruitEvents.recruitsGroupsManager.takePendingDisband(this.getUUID());
+        if (pendingDisband != null) {
+            this.disband(null, pendingDisband.keepTeam, pendingDisband.increaseCost);
+            this.needsTeamUpdate = true;
+            return;
+        }
+
         if (this.getGroup() == null) return;
 
         UUID raw = this.getGroup();
@@ -2059,12 +2068,6 @@ public abstract class AbstractRecruitEntity extends AbstractInventoryEntity{
 
         if (!group.members.contains(this.getUUID())) {
             this.setGroupUUID(null);
-            return;
-        }
-
-        if (group.disbandContext != null && group.disbandContext.disband) {
-            this.disband(null, group.disbandContext.keepTeam, group.disbandContext.increaseCost);
-            this.needsTeamUpdate = true;
             return;
         }
 

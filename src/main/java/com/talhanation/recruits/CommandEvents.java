@@ -628,26 +628,12 @@ public class CommandEvents {
 
         if (playerCanPay || player.isCreative()){
             if(recruit.hire(player, group, message)) {
-                //give player tradeGood
-                //remove playerEmeralds ->add left
-                //
-                playerEmeralds = playerEmeralds - sollPrice;
-
-                //merchantEmeralds = merchantEmeralds + sollPrice;
-
-                //remove playerEmeralds
-                for (int i = 0; i < playerInv.getContainerSize(); i++) {
-                    ItemStack itemStackInSlot = playerInv.getItem(i);
-                    Item itemInSlot = itemStackInSlot.getItem();
-                    if (itemInSlot.equals(currency)) {
-                        playerInv.removeItemNoUpdate(i);
-                    }
+                // KhaosKorps fork: the price comes from the smallest stacks first and no stack is moved; the
+                // release emptied every stack and gave the change back as new stacks in the first free slots.
+                if (!com.talhanation.recruits.khaoskorps.CurrencyPayment.take(playerInv, currency, sollPrice) && !player.isCreative()) {
+                    Main.LOGGER.warn("[Recruits] Hiring {}: {} could pay {} {} when checked, but not when paying; hired without payment",
+                            recruit.getName().getString(), player.getName().getString(), sollPrice, currency);
                 }
-
-                //add leftEmeralds to playerInventory
-                ItemStack emeraldsLeft = currencyItemStack.copy();
-                emeraldsLeft.setCount(playerEmeralds);
-                playerInv.add(emeraldsLeft);
 
 
                 if(player.getTeam() != null){

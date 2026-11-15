@@ -517,30 +517,8 @@ public class FactionEvents {
         if (!(player instanceof ServerPlayer serverPlayer) || costs <= 0 || player.isCreative()) return;
         if (!playerHasEnoughEmeralds(serverPlayer, costs)) return;
 
-        Inventory playerInv = player.getInventory();
-        int playerEmeralds = 0;
-
-        ItemStack currencyItemStack = getCurrency();
-
-
-        //checkPlayerMoney
-        playerEmeralds = playerGetEmeraldsInInventory(player, currencyItemStack.getItem());
-        playerEmeralds = playerEmeralds - costs;
-
-        //remove Player Emeralds
-        for (int i = 0; i < playerInv.getContainerSize(); i++){
-            ItemStack itemStackInSlot = playerInv.getItem(i);
-            Item itemInSlot = itemStackInSlot.getItem();
-            if (itemInSlot == currencyItemStack.getItem()){
-                playerInv.removeItemNoUpdate(i);
-            }
-        }
-
-        //add Player Emeralds what is left
-        ItemStack emeraldsLeft = getCurrency();
-
-        emeraldsLeft.setCount(playerEmeralds);
-        playerInv.add(emeraldsLeft);
+        // KhaosKorps fork: the cost comes from the smallest stacks first and no stack is moved.
+        com.talhanation.recruits.khaoskorps.CurrencyPayment.take(player.getInventory(), getCurrency().getItem(), costs);
     }
 
     public static int playerGetEmeraldsInInventory(Player player, Item currency) {

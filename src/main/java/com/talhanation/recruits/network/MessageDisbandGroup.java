@@ -37,8 +37,9 @@ public class MessageDisbandGroup implements Message<MessageDisbandGroup> {
         RecruitsGroup group = RecruitEvents.recruitsGroupsManager.getGroup(groupUUID);
         if(group == null || !NetworkSecurity.canManageGroup(player, group)) return;
 
-        // KhaosKorps port: upstream's markMembersForDisband arrives in a later commit (b9ffdb25), so the 1.15.2 call stays.
-        group.setDisbandContext(new RecruitsGroup.DisbandContext(true, keepTeam, true));
+        // KhaosKorps fork: only the recruits in the group now are dismissed. The release marked the group
+        // itself and never cleared it, so every recruit that joined it later was dismissed too.
+        RecruitEvents.recruitsGroupsManager.markMembersForDisband(group, new RecruitsGroup.DisbandContext(true, keepTeam, true));
 
         RecruitEvents.recruitsGroupsManager.broadCastGroupsToPlayer(player);
 

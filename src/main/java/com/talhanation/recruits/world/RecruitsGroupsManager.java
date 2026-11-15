@@ -17,6 +17,12 @@ public class RecruitsGroupsManager {
     private final Map<UUID, RecruitsGroup> groupMap = new HashMap<>();
     private final Map<UUID, UUID> redirects = new HashMap<>();
     private final Map<UUID, UUID> recruitRedirects = new HashMap<>();
+    /**
+     * Recruits that were in a group when it was disbanded, each with how to dismiss it. Kept per
+     * recruit, not on the group, so a recruit that joins the group afterwards stays hired. In memory
+     * only: a recruit not yet dismissed when the server stops stays hired.
+     */
+    private final Map<UUID, RecruitsGroup.DisbandContext> pendingDisbands = new HashMap<>();
     public void load(ServerLevel level) {
         RecruitsGroupsSaveData data = RecruitsGroupsSaveData.get(level);
         groups.clear();
@@ -85,6 +91,30 @@ public class RecruitsGroupsManager {
         groupUUID = resolveGroup(groupUUID);
 
         return groupMap.get(groupUUID);
+    }
+
+    /**
+     * Marks the group's current members for dismissal; the group itself stays usable.
+     *
+     * @param group the group being disbanded
+     * @param context how each member is dismissed
+     */
+    public void markMembersForDisband(RecruitsGroup group, RecruitsGroup.DisbandContext context) {
+        if (group == null || context == null) return;
+        for (UUID member : group.members) {
+            pendingDisbands.put(member, context);
+        }
+    }
+
+    /**
+     * Takes the recruit's pending dismissal, if it has one, so it is acted on once.
+     *
+     * @param recruit the recruit's UUID
+     * @return how to dismiss it, or null if it isn't marked
+     */
+    @Nullable
+    public RecruitsGroup.DisbandContext takePendingDisband(UUID recruit) {
+        return pendingDisbands.remove(recruit);
     }
 
     public void addMember(UUID groupUUID, UUID member, ServerLevel serverLevel) {

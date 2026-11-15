@@ -39,16 +39,21 @@
 
   // ---------- views ----------
   var VIEWS = ['runs', 'explore', 'search', 'code'];
+  // The page opens on Explore. A view that needs a run loads the first one if none is loaded yet.
+  var loading = false;
   function showView() {
-    var name = (location.hash || '#runs').slice(1);
-    if (VIEWS.indexOf(name) < 0) name = 'runs';
-    if ((name === 'explore' || name === 'search') && !M) name = 'runs';
+    var name = (location.hash || '#explore').slice(1);
+    if (VIEWS.indexOf(name) < 0) name = 'explore';
     VIEWS.forEach(function (v) {
       $('v-' + v).hidden = v !== name;
       var tab = document.querySelector('nav.tabs a[href="#' + v + '"]');
       if (tab) tab.setAttribute('aria-current', v === name ? 'page' : 'false');
     });
     stopPlay();
+    if ((name === 'explore' || name === 'search') && !M) {
+      if (!loading && INDEX.runs.length) openRun(0, false);
+      return;
+    }
     if (name === 'explore') layoutExplore();
     if (name === 'search') layoutSearch();
   }
@@ -67,17 +72,23 @@
     stopPlay();
     var r = INDEX.runs[i];
     runSel.value = i;
+    loading = true;
     $('run-status').textContent = 'Loading ' + r.label + ' ...';
+    $('s-head').textContent = 'Loading ' + r.label + ' ...';
     fetch(r.file).then(function (res) {
       if (!res.ok) throw new Error('the page could not fetch ' + r.file + ' (HTTP ' + res.status + ')');
       return res.json();
     }).then(function (data) {
       M = V.load(data); st.run = i; st.r = 0; st.s = -1; st.k = 0; st.sel = null; st.t = V.lastTick(M);
-      terrain = null; world3d = null;
+      terrain = null; world3d = null; loading = false;
       $('run-status').textContent = '';
       buildRecruitList();
       if (go && location.hash !== '#explore') location.hash = '#explore'; else showView();
-    }).catch(function (e) { $('run-status').textContent = 'Could not open this run: ' + e.message + '.'; });
+    }).catch(function (e) {
+      loading = false;
+      var why = 'Could not open this run: ' + e.message + '.';
+      $('run-status').textContent = why; $('s-head').textContent = why;
+    });
   }
 
   // ---------- the map, shared drawing ----------
@@ -85,7 +96,7 @@
   function terrainImage() {
     var off = document.createElement('canvas'); off.width = M.SX; off.height = M.SZ;
     var c = off.getContext('2d'), img = c.createImageData(M.SX, M.SZ);
-    var lo = hexRgb(css('--t-low')), hi = hexRgb(css('--t-high')), wall = hexRgb(css('--t-wall')), water = hexRgb(css('--water')), lava = hexRgb(css('--lava'));
+    var lo = hexRgb(css('--t-low')), hi = hexRgb(css('--t-high')), wall = hexRgb(css('--t-wall')), water = hexRgb(css('--water')), lava = hexRgb(css('--lava')), leaf = hexRgb(css('--leaf'));
     for (var x = 0; x < M.SX; x++) for (var z = 0; z < M.SZ; z++) {
       var col, s = M.stand[z * M.SX + x];
       if (V.isEdge(M, x, z)) col = wall;
@@ -95,6 +106,7 @@
         col = shade(col, Math.max(0.55, Math.min(1.3, 1 - 0.09 * (nw - s))));
         if (M.wet[z * M.SX + x] === 1) col = mix(col, water, 0.72);
         if (M.wet[z * M.SX + x] === 2) col = mix(col, lava, 0.8);
+        if (M.leaf[z * M.SX + x]) col = mix(col, leaf, 0.4);
       }
       var i = (z * M.SX + x) * 4; img.data[i] = col[0]; img.data[i + 1] = col[1]; img.data[i + 2] = col[2]; img.data[i + 3] = 255;
     }
@@ -139,8 +151,8 @@
     c.fillText(label, x, z + 0.5);
   };
   Plot.prototype.cross = function (p, color) {
-    var c = this.ctx, cell = this.cell, x = p[0] * cell, z = p[2] * cell, m = Math.max(1, cell * 0.2);
-    c.strokeStyle = color; c.lineWidth = 1.6;
+    var c = this.ctx, cell = this.cell, x = p[0] * cell, z = p[2] * cell, m = -Math.max(1, cell * 0.15);
+    c.strokeStyle = color; c.lineWidth = 2.4;
     c.beginPath(); c.moveTo(x + m, z + m); c.lineTo(x + cell - m, z + cell - m); c.moveTo(x + cell - m, z + m); c.lineTo(x + m, z + cell - m); c.stroke();
   };
   Plot.prototype.dot = function (p, color, size, centred) {
@@ -202,8 +214,8 @@
       steps.forEach(function (s, i) {
         if (i === 0 || s.event === 'direct') chain[s.side] = chain[s.side].length ? chain[s.side] : [s.from];
         if (!s.spot || s.event.indexOf('direct') === 0 || s.event === 'side-done') return;
-        if (s.event === 'reached') { chain[s.side].push(s.spot); p.dot(s.spot, css('--good'), Math.max(3, p.cell * 0.55)); }
-        else if (s.event === 'trying') p.dot(s.spot, css('--accent'), Math.max(2, p.cell * 0.35));
+        if (s.event === 'reached') { chain[s.side].push(s.spot); p.dot(s.spot, css('--good'), Math.max(4, p.cell * 0.85)); }
+        else if (s.event === 'trying') p.dot(s.spot, css('--accent'), Math.max(3, p.cell * 0.6));
         else p.cross(s.spot, css(STEP_STYLE[s.event] || '--muted'));
       });
       ['1', '-1'].forEach(function (k) { p.line(chain[k], css('--good'), 1.8, [2, 3]); });
@@ -257,9 +269,10 @@
       + fmt(d) + ' blocks from its owner: ' + states.join('; ') + '.</p>');
     var w = V.walkedAt(M, st.r, t);
     if (w) {
-      var rl = V.route(M, w).length;
-      h.push('<p>Walking the route search <button type="button" class="link" data-inspect="' + w.id + '">#' + w.id + '</button> found: '
-        + rl + ' points' + (w.kept >= 0 && w.kept < rl ? ', of which edge care kept the first ' + w.kept : '') + '; ' + (w.reached ? 'it reaches the owner' : 'it does not reach the owner') + '.</p>');
+      var rl = V.route(M, w).length, link = '<button type="button" class="link" data-inspect="' + w.id + '">#' + w.id + '</button>';
+      h.push(rl ? '<p>Walking the route search ' + link + ' found: ' + rl + ' points' + (w.kept >= 0 && w.kept < rl ? ', of which edge care kept the first ' + w.kept : '')
+        + '; ' + (w.reached ? 'it reaches the owner' : 'it does not reach the owner') + '.</p>'
+        : '<p>Its path, search ' + link + ', was still being searched when the run ended.</p>');
     }
     $('now').innerHTML = h.join('');
     // the planner
@@ -277,7 +290,13 @@
     }
     $('planner').innerHTML = ph.join('');
     // searches near this tick
-    var near = V.searchesNear(M, st.r, t, 10), nh = ['<ul class="near">'];
+    // The searches nearest this tick that kept their points (so they can be opened point by point), then the nearest others.
+    var around = V.searchesNear(M, st.r, t, 400);
+    var opened = around.filter(function (s) { return V.pointsSource(M, s); });
+    opened.sort(function (a, b) { return Math.abs(a.tick - t) - Math.abs(b.tick - t); });
+    var rest = around.filter(function (s) { return !V.pointsSource(M, s); });
+    rest.sort(function (a, b) { return Math.abs(a.tick - t) - Math.abs(b.tick - t); });
+    var near = opened.slice(0, 6).concat(rest.slice(0, 4)).sort(function (a, b) { return a.id - b.id; }), nh = ['<ul class="near">'];
     near.forEach(function (s) {
       var kind = s.own ? (s.detail ? 'every number' : 'points') : s.sameAs !== undefined ? 'same as #' + s.sameAs : 'counts only';
       nh.push('<li><button type="button" class="link" data-inspect="' + s.id + '">#' + s.id + '</button> tick ' + s.tick + ', ' + esc(s.kind) + ', '
@@ -386,7 +405,10 @@
   function layoutSearch() {
     if (!M) return;
     if (st.s < 0 || !M.searches[st.s]) {
-      var w = V.walkedAt(M, st.r, st.t) || V.searchesNear(M, st.r, st.t, 1)[0];
+      // Open on the followed recruit's search nearest this tick that kept its points, else the one it walks.
+      var t = st.t, withPoints = V.searchesNear(M, st.r, t, 400).filter(function (s) { return V.pointsSource(M, s); });
+      withPoints.sort(function (a, b) { return Math.abs(a.tick - t) - Math.abs(b.tick - t); });
+      var w = withPoints[0] || V.walkedAt(M, st.r, t) || V.searchesNear(M, st.r, t, 1)[0];
       st.s = w ? w.id : 0; st.k = 0;
     }
     searchPlot = new Plot($('s-map'), 640);
@@ -491,7 +513,7 @@
 
   // ---------- search: block checks ----------
   function selected() { if (st.sel) return st.sel; var pts = PTS(), p = pts[Math.min(st.k, pts.length - 1)]; return p ? [p.p[0], p.p[2]] : [M.SX >> 1, M.SZ >> 1]; }
-  function blockColor(c) { return c === '#' ? css('--stone') : c === 'w' ? css('--water') : c === 'l' ? css('--lava') : css('--air'); }
+  function blockColor(c) { return c === '#' ? css('--stone') : c === 'f' ? css('--leaf') : c === 'w' ? css('--water') : c === 'l' ? css('--lava') : css('--air'); }
   function drawColumn() {
     var at = selected(), x = at[0], z = at[1], u = Math.max(4, Math.min(14, Math.floor(560 / M.SY)));
     var c = sizeCanvas($('column'), 150, M.SY * u + 4), pts = PTS(), p = null;
@@ -576,12 +598,12 @@
       world3d = M; clearGroup(three.world);
       three.target.set(M.SX / 2, (M.minStand + M.maxStand) / 2, M.SZ / 2);
       three.dist = Math.max(60, Math.max(M.SX, M.SZ) * 1.45);
-      var solids = [], waters = [];
+      var solids = [], waters = [], leaves = [];
       for (var x = 1; x < M.SX - 1; x++) for (var z = 1; z < M.SZ - 1; z++) for (var y = 0; y < M.SY; y++) {
         var c = V.blockAt(M, x, y, z);
         if (c === '.') continue;
         var open = V.blockAt(M, x, y + 1, z) !== '#' || V.blockAt(M, x + 1, y, z) !== '#' || V.blockAt(M, x - 1, y, z) !== '#' || V.blockAt(M, x, y, z + 1) !== '#' || V.blockAt(M, x, y, z - 1) !== '#';
-        if (open) (c === '#' ? solids : waters).push([x, y, z]);
+        if (open) (c === '#' ? solids : c === 'f' ? leaves : waters).push([x, y, z]);
       }
       var box = new THREE.BoxGeometry(1, 1, 1), mx = new THREE.Matrix4(), col = new THREE.Color(), lo = hexRgb(css('--t-low')), hi = hexRgb(css('--t-high'));
       var mesh = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial({ clippingPlanes: [three.clip] }), Math.max(1, solids.length));
@@ -591,11 +613,12 @@
         col.setRGB(cc[0] / 255, cc[1] / 255, cc[2] / 255); mesh.setColorAt(i, col);
       });
       three.world.add(mesh);
-      if (waters.length) {
-        var wm = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial({ color: color3('--water'), transparent: true, opacity: 0.55, clippingPlanes: [three.clip] }), waters.length);
-        waters.forEach(function (b, i) { mx.makeTranslation(b[0] + 0.5, b[1] + 0.5, b[2] + 0.5); wm.setMatrixAt(i, mx); });
-        three.world.add(wm);
-      }
+      [[waters, '--water', 0.55], [leaves, '--leaf', 0.6]].forEach(function (set) {
+        if (!set[0].length) return;
+        var im = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial({ color: color3(set[1]), transparent: true, opacity: set[2], clippingPlanes: [three.clip] }), set[0].length);
+        set[0].forEach(function (b, i) { mx.makeTranslation(b[0] + 0.5, b[1] + 0.5, b[2] + 0.5); im.setMatrixAt(i, mx); });
+        three.world.add(im);
+      });
     }
     clearGroup(three.search);
     var pts = PTS(), pos = new Float32Array(Math.max(1, pts.length) * 3), cols = new Float32Array(Math.max(1, pts.length) * 3), a = hexRgb(css('--pop-a')), b = hexRgb(css('--pop-b'));

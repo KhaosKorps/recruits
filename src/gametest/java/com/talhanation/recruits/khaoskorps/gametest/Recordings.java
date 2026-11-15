@@ -41,7 +41,10 @@ final class Recordings {
         return blocks(helper, 64, 24, 64);
     }
 
-    /** Every block of an arena of the given size, x fastest, then z, then y: '#' solid, 'w' water, 'l' lava, '.' open. */
+    /**
+     * Every block of an arena of the given size, x fastest, then z, then y: '#' solid, 'f' leaves (solid,
+     * but foliage rather than ground), 'w' water, 'l' lava, '.' open.
+     */
     static String blocks(GameTestHelper helper, int sizeX, int sizeY, int sizeZ) {
         StringBuilder out = new StringBuilder(sizeX * sizeY * sizeZ);
         for (int y = 0; y < sizeY; y++) {
@@ -51,6 +54,7 @@ final class Recordings {
                     BlockState state = helper.getLevel().getBlockState(pos);
                     if (state.getFluidState().is(FluidTags.LAVA)) out.append('l');
                     else if (state.getFluidState().is(FluidTags.WATER)) out.append('w');
+                    else if (state.is(net.minecraft.tags.BlockTags.LEAVES)) out.append('f');
                     else if (!state.getCollisionShape(helper.getLevel(), pos).isEmpty()) out.append('#');
                     else out.append('.');
                 }

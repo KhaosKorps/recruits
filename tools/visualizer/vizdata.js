@@ -42,16 +42,18 @@
     };
     m.stand = new Int16Array(SX * SZ);
     m.wet = new Uint8Array(SX * SZ);
+    m.leaf = new Uint8Array(SX * SZ);
     m.minStand = 1e9; m.maxStand = -1e9;
     for (var x = 0; x < SX; x++) for (var z = 0; z < SZ; z++) {
-      var s = 0, w = 0;
+      var s = 0, w = 0, f = 0;
       for (var y = SY - 1; y >= 0; y--) {
         var c = m.blocks.charAt((y * SZ + z) * SX + x);
+        if (c === 'f') { f = 1; continue; }  // leaves are foliage over the ground, not ground
         if (c === 'w') w = 1;
         if (c === 'l') w = 2;
         if (c === '#') { s = y + 1; break; }
       }
-      m.stand[z * SX + x] = s; m.wet[z * SX + x] = w;
+      m.stand[z * SX + x] = s; m.wet[z * SX + x] = w; m.leaf[z * SX + x] = f;
       if (!isEdge(m, x, z)) { m.minStand = Math.min(m.minStand, s); m.maxStand = Math.max(m.maxStand, s); }
     }
     var list = data.recruits && data.recruits.length ? data.recruits

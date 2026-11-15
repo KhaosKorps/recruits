@@ -269,7 +269,8 @@ if too_big:
 
 
 def short_name(test):
-    return (test.replace("aFollowerGoesRoundARoughRavineAtFallDistance", "rough ravine, fall ")
+    return (test.replace("aFollowerGoesRoundARoughRavineAtFallDistanceOne", "rough ravine, fall distance 1")
+            .replace("aFollowerGoesRoundARoughRavineAtFallDistanceThree", "rough ravine, fall distance 3")
             .replace("aGroupFollowsAcrossTheCapturedRavine_", "your ravine, ").replace("_seed", ", seed ")
             .replace("AtoB_", "A to B, group of ").replace("BtoA_", "B to A, group of "))
 
@@ -312,7 +313,8 @@ cost_rows = "".join(
     f'<td class="num">{(r["queue"] or {}).get("fullTicks", "")}</td></tr>' for r in runs)
 index = json.dumps({"runs": [{"label": r["label"], "file": r["file"]} for r in runs]}, separators=(",", ":")).replace("</", "<\\/")
 
-page = f"""<title>Recruit Pathfinding Visualizer</title>
+page = f"""<meta charset="utf-8">
+<title>Recruit Pathfinding Visualizer</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
@@ -322,7 +324,7 @@ page = f"""<title>Recruit Pathfinding Visualizer</title>
   --good: #2f7a4f; --bad: #b8332b; --warn: #c06a12;
   --t-low: #3b4a40; --t-high: #c9d3c2; --t-wall: #2a2f2b; --water: #3f7fc0; --lava: #d4552b;
   --pop-a: #f2d16b; --pop-b: #b0367a; --open: #1f8a8a; --found: #1659d6; --walk: #7c3aed; --trail: #0f8f5f; --plan: #c2410c;
-  --recruit: #e11d48; --heat: #ea580c; --marker: #ffffff; --marker-fg: #111111; --drop-line: #e07a1f; --step-line: rgba(0,0,0,0.18);
+  --recruit: #e11d48; --heat: #ea580c; --leaf: #3f8f3a; --marker: #ffffff; --marker-fg: #111111; --drop-line: #e07a1f; --step-line: rgba(0,0,0,0.18);
   --stone: #8a918a; --air: #eef1ec; --code-bg: #f0f2ee; --k: #7a3b8f; --t: #1f6f8b; --s: #8a5a12; --c: #6b776d; --n: #b0442a; --fk: #2f7a4f;
   --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif; --body: "Inter", "Segoe UI", system-ui, sans-serif; --mono: "JetBrains Mono", Consolas, monospace;
 }}
@@ -331,19 +333,20 @@ page = f"""<title>Recruit Pathfinding Visualizer</title>
   --good: #6cc28f; --bad: #f0857a; --warn: #f0a24a;
   --t-low: #26302a; --t-high: #a7b4a0; --t-wall: #0c0e0c; --water: #3a78bd; --lava: #e0602f;
   --pop-a: #f2d16b; --pop-b: #d14a95; --open: #45c4c4; --found: #6ea0ff; --walk: #b18cff; --trail: #34d399; --plan: #fb923c;
-  --recruit: #fb7185; --heat: #fb923c; --marker: #ffffff; --marker-fg: #111111; --drop-line: #ff9a3c; --step-line: rgba(255,255,255,0.16);
+  --recruit: #fb7185; --heat: #fb923c; --leaf: #4fa84a; --marker: #ffffff; --marker-fg: #111111; --drop-line: #ff9a3c; --step-line: rgba(255,255,255,0.16);
   --stone: #5d645e; --air: #1f2420; --code-bg: #0f120f; --k: #d4a2e6; --t: #7cc6de; --s: #e2b86a; --c: #7f8c81; --n: #f0937a; --fk: #8fd8aa; color-scheme: dark; }} }}
 :root[data-theme="dark"] {{
   --bg: #121512; --surface: #1a1e1b; --fg: #e3e8e2; --muted: #9aa69c; --line: #2c342e; --accent: #6cc28f;
   --good: #6cc28f; --bad: #f0857a; --warn: #f0a24a;
   --t-low: #26302a; --t-high: #a7b4a0; --t-wall: #0c0e0c; --water: #3a78bd; --lava: #e0602f;
   --pop-a: #f2d16b; --pop-b: #d14a95; --open: #45c4c4; --found: #6ea0ff; --walk: #b18cff; --trail: #34d399; --plan: #fb923c;
-  --recruit: #fb7185; --heat: #fb923c; --marker: #ffffff; --marker-fg: #111111; --drop-line: #ff9a3c; --step-line: rgba(255,255,255,0.16);
+  --recruit: #fb7185; --heat: #fb923c; --leaf: #4fa84a; --marker: #ffffff; --marker-fg: #111111; --drop-line: #ff9a3c; --step-line: rgba(255,255,255,0.16);
   --stone: #5d645e; --air: #1f2420; --code-bg: #0f120f; --k: #d4a2e6; --t: #7cc6de; --s: #e2b86a; --c: #7f8c81; --n: #f0937a; --fk: #8fd8aa; color-scheme: dark; }}
 body {{ background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.55;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 64px; }}
 main {{ max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }}
 section {{ display: flex; flex-direction: column; gap: 14px; min-width: 0; }}
+[hidden] {{ display: none !important; }}
 h1, h2, h3, h4 {{ font-family: var(--display); margin: 0; line-height: 1.2; text-wrap: balance; }}
 h1 {{ font-size: 1.8rem; }} h2 {{ font-size: 1.3rem; }} h3 {{ font-size: 1.08rem; }} h4 {{ font-size: 0.92rem; margin-top: 4px; }}
 p {{ margin: 0; max-width: 80ch; }}

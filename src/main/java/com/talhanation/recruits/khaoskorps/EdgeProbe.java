@@ -3,6 +3,8 @@ package com.talhanation.recruits.khaoskorps;
 import it.unimi.dsi.fastutil.longs.Long2ByteMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.world.level.material.FlowingFluid;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.state.BlockState;
@@ -30,7 +32,7 @@ public final class EdgeProbe {
      * {@code maxFall} blocks, or into lava: the column is lava at feet height; or it is open there,
      * and below it, within {@code maxFall + 1} blocks, is lava or nothing that can be stood on or
      * swum in. A column that is solid at feet height is a wall or a step up, not a drop; water is
-     * something to land in.
+     * something to land in, except falling water, which counts as open.
      */
     public static boolean isDangerousDrop(BlockGetter level, int x, int feetY, int z, int maxFall) {
         if (level instanceof LevelReader reader && !reader.hasChunkAt(x, z)) return false;
@@ -131,9 +133,14 @@ public final class EdgeProbe {
         return level.getFluidState(pos).is(FluidTags.LAVA);
     }
 
-    /** Open: nothing to collide with and no fluid, so a mob would fall through it. */
+    /**
+     * Open: nothing to collide with, and no fluid or only falling water, so a mob would fall through
+     * it. A waterfall's column is falling water all the way down; it is nothing to land in.
+     */
     private static boolean isOpen(BlockGetter level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
-        return state.getFluidState().isEmpty() && state.getCollisionShape(level, pos).isEmpty();
+        if (!state.getCollisionShape(level, pos).isEmpty()) return false;
+        FluidState fluid = state.getFluidState();
+        return fluid.isEmpty() || (fluid.is(FluidTags.WATER) && fluid.hasProperty(FlowingFluid.FALLING) && fluid.getValue(FlowingFluid.FALLING));
     }
 }

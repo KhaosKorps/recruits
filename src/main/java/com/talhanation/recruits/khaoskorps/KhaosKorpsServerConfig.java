@@ -49,6 +49,7 @@ public final class KhaosKorpsServerConfig {
     public static final ForgeConfigSpec.BooleanValue DetourSearch;
     public static final ForgeConfigSpec.DoubleValue MovementSpeedMultiplier;
     public static final ForgeConfigSpec.DoubleValue SwimSpeedMultiplier;
+    public static final ForgeConfigSpec.DoubleValue FlowingWaterCost;
     public static final ForgeConfigSpec.BooleanValue PathLog;
     public static final ForgeConfigSpec.IntValue FireCheckTicks;
     public static final ForgeConfigSpec.IntValue TntCheckTicks;
@@ -172,6 +173,11 @@ public final class KhaosKorpsServerConfig {
                         "Recruits swim at 0.3, under a third of a normal mob's 1.0. Measured against a full current in a shallow stream:",
                         "x8 just holds its place, x10 gains about 1.6 blocks every 5 seconds.")
                 .defineInRange("SwimSpeedMultiplier", d.swimSpeedMultiplier(), 0.1, 20.0);
+        FlowingWaterCost = builder
+                .comment("Extra search cost of a path point in flowing water, on top of the 128 any water costs, so recruits",
+                        "cross still water rather than a current when they can. 0 = flowing water costs what still water does.",
+                        "With EdgeMargin on, a following recruit never paths through any water within the edge margin of a deadly drop.")
+                .defineInRange("FlowingWaterCost", d.flowingWaterCost(), 0.0, 512.0);
         PathLog = builder
                 .comment("Write the path measurement log to logs/recruits-paths/ in the server folder: one CSV row per path search, one per",
                         "following recruit every 100 ticks, and one per settings change, in three files named by the time logging",
@@ -242,7 +248,7 @@ public final class KhaosKorpsServerConfig {
                 KeepWalkingWhileRepathing.get(), StaggerFollowRepaths.get(),
                 EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(), DeadEndSearchNodes.get(), DropCostPerBlock.get(),
                 WaitWhenOwnerUnreachable.get(), UnreachableDepthWeight.get(), CrossOneAtATime.get(), DetourSearch.get(),
-                MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(),
+                MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(), FlowingWaterCost.get(),
                 CreepersTargetRecruits.get(),
                 FireCheckTicks.get(), TntCheckTicks.get(), VillageDefenceCheckTicks.get(),
                 PathLog.get());

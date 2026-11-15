@@ -50,8 +50,11 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     private int edgeMaxFall;
     private final Long2ByteOpenHashMap edgeDropColumns = newDropColumnCache();
     private final LongOpenHashSet edgeCostedNodes = new LongOpenHashSet();
+    // KhaosKorps fork: water points refused for lying beside a deadly drop, kept refused on every later look.
+    private final LongOpenHashSet refusedWater = new LongOpenHashSet();
     // KhaosKorps fork: the dead-end check for this search (0 is off), its answers by landing spot, and the search's targets.
     private int deadEndNodes;
+    private float flowingWaterCost; // KhaosKorps fork: FlowingWaterCost for this search
     private float dropCostPerBlock; // KhaosKorps fork: DropCostPerBlock for this search, 0 unless edge care applies
     private boolean checkingDeadEnd;
     private final it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap deadEnds = new it.unimi.dsi.fastutil.longs.Long2BooleanOpenHashMap();
@@ -80,6 +83,7 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
         this.deadEndNodes = this.edgeMargin > 0 ? settings.deadEndSearchNodes() : 0; // KhaosKorps fork: only where edge care applies
         this.dropCostPerBlock = this.edgeMargin > 0 ? (float) settings.dropCostPerBlock() : 0.0F; // KhaosKorps fork
         this.dirtPath = settings.dirtPathPreference(); // KhaosKorps fork
+        this.flowingWaterCost = (float) settings.flowingWaterCost(); // KhaosKorps fork
         if(mob.isVehicle()){
             this.entityHeight = Mth.floor(mob.getBbHeight() + (float) getEntityHeight());
         }
@@ -152,6 +156,14 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
             if (this.edgeMargin > 0 && node.costMalus >= 0.0F && this.edgeCostedNodes.add(BlockPos.asLong(x, y, z))) {
                 int distance = EdgeProbe.distanceToDangerousDrop(this.level, x, y, z, this.edgeMaxFall, this.edgeMargin, this.edgeDropColumns);
                 node.costMalus += EdgeCost.malus(distance, this.edgeMargin);
+                // KhaosKorps fork: water within the margin of such a drop is no place to go: a current, or a slow
+                // swim against a push, can carry the mob over.
+                if (distance != EdgeProbe.NONE && blockpathtypes == BlockPathTypes.WATER) this.refusedWater.add(BlockPos.asLong(x, y, z));
+            }
+            // KhaosKorps fork: FlowingWaterCost, added once, when the point is first made.
+            if (isNew && this.flowingWaterCost > 0.0F && node.costMalus >= 0.0F && blockpathtypes == BlockPathTypes.WATER) {
+                net.minecraft.world.level.material.FluidState fluid = this.level.getFluidState(new BlockPos(x, y, z));
+                if (fluid.is(net.minecraft.tags.FluidTags.WATER) && !fluid.isSource()) node.costMalus += this.flowingWaterCost;
             }
         }
 
@@ -234,6 +246,7 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
         this.collisionCache.clear();
         this.edgeDropColumns.clear(); // KhaosKorps fork: per-search caches; this evaluator is reused from a pool
         this.edgeCostedNodes.clear();
+        this.refusedWater.clear();
         this.deadEnds.clear(); // KhaosKorps fork
         this.goals.clear(); // KhaosKorps fork
         super.done();
@@ -577,6 +590,8 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
         Node node = this.getNode(p_230620_, p_230621_, p_230622_);
         node.type = p_230623_;
         node.costMalus = Math.max(node.costMalus, p_230624_);
+        // KhaosKorps fork: refused water stays refused; the max above would otherwise lift it back to water's cost.
+        if (this.refusedWater.contains(BlockPos.asLong(p_230620_, p_230621_, p_230622_))) node.costMalus = -1.0F;
         return node;
     }
 

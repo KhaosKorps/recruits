@@ -35,6 +35,7 @@ public record FollowSettings(
         boolean detourSearch,
         double movementSpeedMultiplier,
         double swimSpeedMultiplier,
+        double flowingWaterCost,
         boolean creepersTargetRecruits,
         int fireCheckTicks,
         int tntCheckTicks,
@@ -63,7 +64,7 @@ public record FollowSettings(
             true, 2, 0.5, 64, 0.0,
             true, 2.0, true,
             true,
-            1.0, 1.0,
+            1.0, 1.0, 128.0,
             false,
             2, 2, 2,
             false);

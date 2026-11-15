@@ -17,6 +17,7 @@ public final class KhaosKorps {
         KhaosKorpsServerConfig.register();
         MinecraftForge.EVENT_BUS.register(new CreeperExplosionRules());
         MinecraftForge.EVENT_BUS.register(DetourRoutes.class);
+        MinecraftForge.EVENT_BUS.register(FailedSearches.class);
         MinecraftForge.EVENT_BUS.register(RecruitSpeedSettings.class);
         MinecraftForge.EVENT_BUS.register(ServerTickTasks.class);
         MinecraftForge.EVENT_BUS.register(ArrowCleaner.class);

@@ -27,7 +27,9 @@ import java.util.UUID;
  * overflows onto the server thread; with it off, at most {@link #MAX_SYNC_PER_TICK} run per tick.
  * A plan is dropped when its owner leaves the level, when the owner has moved far from the plan's
  * goal, when its walker is gone, and on server stop. After a failure, a new plan waits until the
- * owner has moved or {@link #RETRY_AFTER_TICKS} have passed. Server thread only.
+ * owner has moved, FailedPlanMemorySeconds have passed, or a player has placed or broken a block near the
+ * ground the plan searched; a recruit stuck far from where the failed plan started plans at once. Server
+ * thread only.
  */
 public final class DetourRoutes {
 
@@ -40,8 +42,8 @@ public final class DetourRoutes {
     static final int MAX_SYNC_PER_TICK = 4;
     /** After a failure, a new plan may start once the owner has moved this far, in blocks. */
     static final double RETRY_AFTER_OWNER_MOVED = 8.0;
-    /** ... or after this many ticks. */
-    static final long RETRY_AFTER_TICKS = 200;
+    /** How far beyond the ground between a failed plan's start and goal a player's block change still forgets it, in blocks. */
+    static final int CHANGE_MARGIN = STEP;
     /** A route is dropped once the owner is this far from the goal it was planned for. */
     static final double DROP_AFTER_OWNER_MOVED = 16.0;
     /** A found route is kept this long at most. */
@@ -54,12 +56,19 @@ public final class DetourRoutes {
 
     /**
      * Starts a plan for the recruits following {@code owner}, from where {@code walker} stands,
-     * unless the owner has one already: planning, found, or failed and still in its wait before a
-     * retry (the tick drops it once that wait is over). Returns whether a new plan started.
+     * unless the owner has one already: planning, found, or failed and still remembered (the tick drops it
+     * once that is over). A failed plan from more than three times FailedSearchSameWithin away from where
+     * {@code walker} stands is dropped for the new one. Returns whether a new plan started.
      */
     public static boolean request(LivingEntity owner, Mob walker, FollowSettings settings) {
         if (!(owner.level() instanceof ServerLevel level) || walker.level() != level) return false;
-        if (BY_OWNER.containsKey(owner.getUUID())) return false;
+        DetourPlan old = BY_OWNER.get(owner.getUUID());
+        if (old != null && old.status() == DetourPlan.Status.FAILED && farFromStart(old, walker, settings)) {
+            // A recruit stuck somewhere else: the failure from there says nothing about here.
+            BY_OWNER.remove(owner.getUUID());
+        } else if (old != null) {
+            return false;
+        }
         int directRange = settings.followMaxPathLength() > 0
                 ? settings.followMaxPathLength()
                 : (int) walker.getAttributeValue(Attributes.FOLLOW_RANGE);
@@ -132,7 +141,8 @@ public final class DetourRoutes {
                     if (ownerMoved > DROP_AFTER_OWNER_MOVED || ticksSinceEnd(plan) > ROUTE_LIFETIME_TICKS) entries.remove();
                 }
                 case FAILED -> {
-                    if (ownerMoved >= RETRY_AFTER_OWNER_MOVED || ticksSinceEnd(plan) > RETRY_AFTER_TICKS) entries.remove();
+                    if (ownerMoved >= RETRY_AFTER_OWNER_MOVED || ticksSinceEnd(plan) > FollowSettings.current().failedPlanMemoryTicks()
+                            || FailedSearches.changedSince(plan.start(), plan.goal(), CHANGE_MARGIN, plan.endedTick())) entries.remove();
                 }
             }
         }
@@ -141,6 +151,12 @@ public final class DetourRoutes {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         BY_OWNER.clear();
+    }
+
+    /** Whether {@code walker} stands more than three times FailedSearchSameWithin from where {@code plan} started. */
+    private static boolean farFromStart(DetourPlan plan, Mob walker, FollowSettings settings) {
+        double far = 3 * settings.failedSearchSameWithin();
+        return walker.blockPosition().distSqr(plan.start()) > far * far;
     }
 
     private static long ticksSinceEnd(DetourPlan plan) {

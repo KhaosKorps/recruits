@@ -44,6 +44,7 @@ class EdgeCareTest {
                 d.keepWalkingWhileRepathing(), d.staggerFollowRepaths(),
                 on, d.edgeMarginBlocks(), d.edgeCarefulSpeed(), d.deadEndSearchNodes(), d.dropCostPerBlock(), d.waitWhenOwnerUnreachable(),
                 d.unreachableDepthWeight(), d.crossOneAtATime(), d.detourSearch(),
+                d.failedPlanMemoryTicks(), d.failedSearchSameWithin(),
                 d.movementSpeedMultiplier(), d.swimSpeedMultiplier(), d.flowingWaterCost(), d.creepersTargetRecruits(),
                 d.fireCheckTicks(), d.tntCheckTicks(), d.villageDefenceCheckTicks(), d.pathLog());
     }

@@ -47,6 +47,8 @@ public final class KhaosKorpsServerConfig {
     public static final ForgeConfigSpec.BooleanValue CrossOneAtATime;
     public static final ForgeConfigSpec.BooleanValue WaitWhenOwnerUnreachable;
     public static final ForgeConfigSpec.BooleanValue DetourSearch;
+    public static final ForgeConfigSpec.IntValue FailedPlanMemorySeconds;
+    public static final ForgeConfigSpec.DoubleValue FailedSearchSameWithin;
     public static final ForgeConfigSpec.DoubleValue MovementSpeedMultiplier;
     public static final ForgeConfigSpec.DoubleValue SwimSpeedMultiplier;
     public static final ForgeConfigSpec.DoubleValue FlowingWaterCost;
@@ -165,6 +167,16 @@ public final class KhaosKorpsServerConfig {
                         "is on the ground, plan a way round in steps of up to 16 blocks, at most 4 times the straight-line",
                         "distance, through loaded chunks only. One plan per owner, shared by its followers. On by default.")
                 .define("DetourSearch", d.detourSearch());
+        FailedPlanMemorySeconds = builder
+                .comment("How long a failed detour plan is remembered, in seconds, before the recruits following that owner may",
+                        "plan again from the same place. A recruit stuck more than three times FailedSearchSameWithin from where",
+                        "the failed plan started plans at once; so does any after the owner moves 8 blocks or a player places",
+                        "or breaks a block near the ground the plan searched. 10 = as before this setting.")
+                .defineInRange("FailedPlanMemorySeconds", d.failedPlanMemoryTicks() / 20, 10, 1800);
+        FailedSearchSameWithin = builder
+                .comment("How near, in blocks, a recruit must be stuck to where a failed detour plan started, divided by three, for",
+                        "that failure to count for it: with 2.0, a recruit stuck more than 6 blocks from it plans at once.")
+                .defineInRange("FailedSearchSameWithin", d.failedSearchSameWithin(), 0.5, 16.0);
         MovementSpeedMultiplier = builder
                 .comment("Multiplies every recruit's movement speed. 1.0 = unchanged. Never saved: a recruit's own speed stays as it was.")
                 .defineInRange("MovementSpeedMultiplier", d.movementSpeedMultiplier(), 0.1, 3.0);
@@ -248,6 +260,7 @@ public final class KhaosKorpsServerConfig {
                 KeepWalkingWhileRepathing.get(), StaggerFollowRepaths.get(),
                 EdgeMargin.get(), EdgeMarginBlocks.get(), EdgeCarefulSpeed.get(), DeadEndSearchNodes.get(), DropCostPerBlock.get(),
                 WaitWhenOwnerUnreachable.get(), UnreachableDepthWeight.get(), CrossOneAtATime.get(), DetourSearch.get(),
+                FailedPlanMemorySeconds.get() * 20, FailedSearchSameWithin.get(),
                 MovementSpeedMultiplier.get(), SwimSpeedMultiplier.get(), FlowingWaterCost.get(),
                 CreepersTargetRecruits.get(),
                 FireCheckTicks.get(), TntCheckTicks.get(), VillageDefenceCheckTicks.get(),

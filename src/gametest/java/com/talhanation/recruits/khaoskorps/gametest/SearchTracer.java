@@ -63,6 +63,13 @@ final class SearchTracer {
         int popCount, expandedCount, behindCount;
         /** Whether the search ran on the server thread: with async searches on, the path worker's queue was full. */
         volatile boolean onServerThread;
+        /**
+         * The route the search found, as x, y, z triples from its start: copied when the search ends, before
+         * anything (edge care) cuts the path it returns. Null when the search had no target or no start.
+         */
+        volatile int[] found;
+        /** Whether the search reached its target, by its own test. */
+        volatile boolean foundReached;
         final List<Pop> pops = new ArrayList<>();
         /** The path the search returned, when the path finder that ran it could note it. */
         volatile Path path;
@@ -141,6 +148,7 @@ final class SearchTracer {
         this.current = null;
         this.decided = false;
         this.expandedHere.clear();
+        this.targetObjects.clear();
         if (sink == null) return;
         SearchRecord next = new SearchRecord();
         next.kind = kind;
@@ -158,7 +166,32 @@ final class SearchTracer {
     }
 
     void goal(Target target) {
-        if (this.record != null) this.record.targets.add(new int[]{target.x, target.y, target.z});
+        if (this.record == null) return;
+        this.record.targets.add(new int[]{target.x, target.y, target.z});
+        this.targetObjects.add(target);
+    }
+
+    /** The search's own targets, which track the node nearest each: the end of the path the search returns. */
+    private final List<Target> targetObjects = new ArrayList<>();
+
+    /**
+     * The route the search returns, rebuilt as the path finder rebuilds it: from the first target's best
+     * node back along "reached from". Exact for one target and DropCostPerBlock 0, the defaults (with a drop
+     * cost, a reached path is rebuilt from the node that reached the target instead).
+     */
+    private static int[] foundRoute(Target target) {
+        Node end = target.getBestNode();
+        if (end == null) return null;
+        List<Node> chain = new ArrayList<>();
+        for (Node n = end; n != null; n = n.cameFrom) chain.add(n);
+        int[] out = new int[chain.size() * 3];
+        for (int i = 0; i < chain.size(); i++) {
+            Node n = chain.get(chain.size() - 1 - i);
+            out[3 * i] = n.x;
+            out[3 * i + 1] = n.y;
+            out[3 * i + 2] = n.z;
+        }
+        return out;
     }
 
     /** Before the real getNeighbors: records the point taken off the open set. Returns whether to record its neighbours. */
@@ -252,6 +285,11 @@ final class SearchTracer {
             }
         }
         this.expandedHere.clear();
+        if (this.record != null && !this.targetObjects.isEmpty()) {
+            this.record.found = foundRoute(this.targetObjects.get(0));
+            this.record.foundReached = this.targetObjects.get(0).isReached();
+        }
+        this.targetObjects.clear();
         SearchRecord finished = this.record;
         Sink to = this.sink;
         this.record = null;

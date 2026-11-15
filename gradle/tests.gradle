@@ -118,8 +118,8 @@ tasks.register('buildVisualizer', Exec) {
     workingDir = project.projectDir
     commandLine 'python', '-I', 'tools/visualizer/build_visualizer.py',
             '--clone', project.projectDir.path,
-            '--trace', 'build/gametest-run/pathtrace/ravine-seed1.json',
             '--viz', 'tools/visualizer/viz.js',
+            '--data', 'tools/visualizer/vizdata.js',
             '--out', 'build/visualizer/index.html',
             '--runs', 'build/gametest-run/runs',
             '--log', 'build/gametest-run/logs/latest.log'
@@ -131,5 +131,20 @@ tasks.register('buildVisualizer', Exec) {
         } else {
             logger.lifecycle("Pathfinding visualiser: ${project.file('build/visualizer/index.html')} (tools/visualizer/README.md says how to open it)")
         }
+    }
+    finalizedBy 'checkVisualizerData'
+}
+
+// The visualiser's data layer, tested on the run's own recordings (tools/visualizer/test_vizdata.js). Needs Node on the
+// PATH; a failure is reported here and leaves the test run's result as it was.
+tasks.register('checkVisualizerData', Exec) {
+    group = 'verification'
+    description = 'Tests the visualiser data layer and page on the recordings of the last GameTest run.'
+    workingDir = project.projectDir
+    commandLine 'node', 'tools/visualizer/test_vizdata.js', 'build/gametest-run/runs', 'build/visualizer'
+    ignoreExitValue = true
+    doLast {
+        int exit = executionResult.get().exitValue
+        if (exit != 0) logger.warn("The visualiser's data checks failed (node exited ${exit}); the failing checks are listed above.")
     }
 }

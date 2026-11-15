@@ -1,29 +1,40 @@
 # Recruit pathfinding visualiser
 
-A web page that replays what the recruits' pathfinding did in a GameTest run: every rough-ravine
-test tick by tick, any recorded search step by step with the numbers it computed, the block checks
-behind each cost, the test world in 3D, and the code that ran, copied whole from `src/main`.
+A web page that replays recorded GameTest runs over the test world's real blocks. Four views:
+
+- **Runs**: every recorded test, how its recruits ended, and what its searching cost.
+- **Explore a run**: one map with its controls above it. Layers: where every recruit walked; the
+  followed recruit's current route (the route its search found dashed, the part edge care kept
+  solid); every route it found so far; the detour planner's stepping stones (reached, being tried,
+  or why one failed); where all searches looked. Beside it: the recruits (click one to follow it),
+  where the followed one is, what the planner is doing, and its searches near the chosen tick. Under
+  it: each recruit's distance to its owner over the run; click it to jump there.
+- **One search**: a search point by point, with its numbers where they were kept, the blocks around
+  any column, and a 3D view.
+- **The code**: the methods that run for one re-plan, copied whole from `src/main`.
 
 ## How it's built
 
 `gradlew runGameTestServer` builds it after every run (the `buildVisualizer` task in
-`gradle/tests.gradle`), into `build/visualizer/`:
+`gradle/tests.gradle`) into `build/visualizer/`, then checks it (`checkVisualizerData`). It needs
+Python 3 and Node on the PATH.
 
-- `index.html`: the page, with the single-search trace and the code embedded.
-- `runs/*.json`: one recording per rough-ravine test, loaded when you open that run.
+| File | What it is |
+|---|---|
+| `build_visualizer.py` | Writes `index.html` from the recordings, the test log and the source |
+| `vizdata.js` | The page's data layer: turns a recording into what the page draws; no page code |
+| `viz.js` | The page's views and drawing |
+| `test_vizdata.js` | Checks `vizdata.js` on every recording, then runs `test_page.js` |
+| `test_page.js` | Loads both scripts under Node with a stand-in page and plays every recording |
 
-It needs Python 3 on the PATH. The inputs come from the test run:
+The recordings come from `GroupRecorder` (in `src/gametest`), one per recorded test, in
+`build/gametest-run/runs/*.json.gz`. The page fetches them from `build/visualizer/runs/`.
 
-| Input | Written by | Where |
-|---|---|---|
-| Run recordings, one per rough-ravine test | `RunRecorder` | `build/gametest-run/runs/*.json.gz` |
-| Three single searches on ravine seed 1 | `PathTraceGameTests` | `build/gametest-run/pathtrace/ravine-seed1.json` |
-| Pass and fail counts | the GameTest server | `build/gametest-run/logs/latest.log` |
-
-To build it by hand, or with a findings note under the findings section:
+The long group tests on the captured ravine run only when asked:
 
 ```
-python -I tools/visualizer/build_visualizer.py --clone . --trace build/gametest-run/pathtrace/ravine-seed1.json --viz tools/visualizer/viz.js --out build/visualizer/index.html --runs build/gametest-run/runs --log build/gametest-run/logs/latest.log --notes notes.html
+gradlew runGameTestServer -PgroupTests=pilot
+gradlew runGameTestServer -PgroupTests=all
 ```
 
 ## Opening it
@@ -37,8 +48,9 @@ python -m http.server 8000 --bind 127.0.0.1 --directory build/visualizer
 
 ## Data and its lifetime
 
-- Each test run starts by deleting the last run's recordings, so they never pile up. About 7 MB
-  compressed for the 12 rough-ravine tests, and the page's own uncompressed copy about 45 MB.
+- Each test run starts by deleting the last run's recordings, so they never pile up: about 7 MB
+  compressed for the normal run, and up to 10 MB uncompressed for the largest group run.
+- The builder stops with an error if any recording passes 16 MB, the most a published page's file
+  may hold.
 - Everything is under `build/`, which git ignores and `gradlew clean` deletes. Nothing recorded is
-  committed.
-- A page published for sharing is a copy; it doesn't change when the tests run again.
+  committed. A page published for sharing is a copy; it doesn't change when the tests run again.

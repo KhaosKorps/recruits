@@ -77,7 +77,7 @@ public class EdgeSafetyGameTests {
         });
     }
 
-    private static void cliff(GameTestHelper helper) {
+    static void cliff(GameTestHelper helper) {
         walls(helper);
         ground(helper, CORRIDOR_X_MIN, 5, 7);
         ground(helper, 6, 6, 6);

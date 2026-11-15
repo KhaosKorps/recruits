@@ -37,9 +37,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.zip.GZIPOutputStream;
 
-import static com.talhanation.recruits.khaoskorps.gametest.RunRecorder.num;
-import static com.talhanation.recruits.khaoskorps.gametest.RunRecorder.quote;
-import static com.talhanation.recruits.khaoskorps.gametest.RunRecorder.xyz;
+import static com.talhanation.recruits.khaoskorps.gametest.Recordings.num;
+import static com.talhanation.recruits.khaoskorps.gametest.Recordings.quote;
+import static com.talhanation.recruits.khaoskorps.gametest.Recordings.xyz;
 
 /**
  * Records a whole group's test run for the pathfinding visualiser: every recruit's position each
@@ -47,11 +47,12 @@ import static com.talhanation.recruits.khaoskorps.gametest.RunRecorder.xyz;
  * points of a sample of those searches, the owner's detour plan, each death and its cause, how full
  * the path worker's queue got, and a heat map of every point any search took off its open set.
  *
- * One per test. Points are kept for every detour search up to {@link #DETOUR_POINTS} and for one
- * follow search per recruit every {@link #FOLLOW_SAMPLE_TICKS}; the other searches keep their counts
- * only, which is what makes a long run of a large group fit in memory. The run is written once, to
- * runs/&lt;test name&gt;.json.gz in the test server's folder, in the single-run format with a
- * recruits list, a heat map and a summary added.
+ * One per test, for one recruit or many. Every search keeps the route it found. Points are kept for
+ * every detour search up to {@link #DETOUR_POINTS}, and for one follow search per recruit every
+ * {@code followSampleTicks} (every follow search when 0); the other searches keep their counts only,
+ * which is what makes a long run of a large group fit in memory. Full detail (every step asked for and
+ * every neighbour's values) is kept for up to {@code detailLimit} searches, the first from each start to
+ * each target. The run is written once, to runs/&lt;test name&gt;.json.gz in the test server's folder.
  */
 final class GroupRecorder {
 
@@ -64,10 +65,16 @@ final class GroupRecorder {
     private final BlockPos origin;
     private final int sizeX, sizeY, sizeZ;
     private final String setup;
+    private final long seed;
+    private final int followSampleTicks;
+    private final int detailLimit;
+    private final Set<String> detailedKeys = new HashSet<>();
+    private int detailed;
     private final List<Member> members = new ArrayList<>();
     private final AtomicIntegerArray heatFollow;
     private final AtomicIntegerArray heatDetour;
     private final AtomicInteger detourKept = new AtomicInteger();
+    private final PlanSteps planSteps;
     private final List<String> plans = new ArrayList<>();
     private String lastPlan = "";
     private int maxQueued;
@@ -75,11 +82,20 @@ final class GroupRecorder {
     private int ticks;
     private boolean written;
 
-    /**
-     * @param setup a JSON object describing the test's setup (direction, group size, spawn points),
-     *              written into the run as it is
-     */
+    /** A group run: one follow search per recruit every {@link #FOLLOW_SAMPLE_TICKS} keeps its points, none keeps full detail. */
     GroupRecorder(String name, GameTestHelper helper, ServerPlayer owner, int sizeX, int sizeY, int sizeZ, String setup) {
+        this(name, helper, owner, sizeX, sizeY, sizeZ, setup, 0, FOLLOW_SAMPLE_TICKS, 0);
+    }
+
+    /**
+     * @param setup             a JSON object describing the test's setup (direction, group size, spawn
+     *                          points), written into the run as it is
+     * @param seed              the test terrain's seed, 0 for none
+     * @param followSampleTicks how often a recruit's follow search keeps its points, in ticks; 0 for every one
+     * @param detailLimit       how many searches keep full detail
+     */
+    GroupRecorder(String name, GameTestHelper helper, ServerPlayer owner, int sizeX, int sizeY, int sizeZ, String setup,
+                  long seed, int followSampleTicks, int detailLimit) {
         this.name = name;
         this.helper = helper;
         this.owner = owner;
@@ -88,11 +104,20 @@ final class GroupRecorder {
         this.sizeY = sizeY;
         this.sizeZ = sizeZ;
         this.setup = setup;
+        this.seed = seed;
+        this.followSampleTicks = followSampleTicks;
+        this.detailLimit = detailLimit;
         this.heatFollow = new AtomicIntegerArray(sizeX * sizeZ);
         this.heatDetour = new AtomicIntegerArray(sizeX * sizeZ);
+        this.planSteps = new PlanSteps(helper);
     }
 
-    /** Starts recording {@code recruit}: its navigation gets a tracing path finder, as RunRecorder does for one. */
+    /** The detour planner's steps for this run's recruits, so far. */
+    PlanSteps planSteps() {
+        return this.planSteps;
+    }
+
+    /** Starts recording {@code recruit}: its navigation gets a tracing path finder, which runs the real search and records it. */
     Member add(AbstractRecruitEntity recruit) {
         if (!(recruit.getNavigation() instanceof AsyncPathNavigation navigation)) {
             throw new GameTestAssertException("setup: a recruit's navigation can't be recorded: " + recruit.getNavigation());
@@ -104,7 +129,8 @@ final class GroupRecorder {
             member.budget = budgetField.getInt(navigation);
             Field finder = AsyncPathNavigation.class.getDeclaredField("pathFinder");
             finder.setAccessible(true);
-            RunRecorder.recordInto(recruit, member);
+            Recordings.recordInto(recruit, member);
+            this.planSteps.watch(recruit);
             TracingDetourEvaluator.fillThePool();
             finder.set(navigation, RecruitsServerConfig.UseAsyncPathfinding.get()
                     ? new TracingPathfinders.Async(member.budget, member, member, this.helper.getLevel())
@@ -144,11 +170,23 @@ final class GroupRecorder {
         }
     }
 
+    /** Stops recording without writing anything, for a test that checks the recording in memory. */
+    void discard() {
+        this.written = true;
+        for (Member member : this.members) {
+            Recordings.forget(member.recruit);
+            PlanSteps.unwatch(member.recruit);
+        }
+    }
+
     /** Writes the run once, with how it ended and each recruit's final state as the test judged it. */
     void finish(String outcome, String message) {
         if (this.written) return;
         this.written = true;
-        for (Member member : this.members) RunRecorder.forget(member.recruit);
+        for (Member member : this.members) {
+            Recordings.forget(member.recruit);
+            PlanSteps.unwatch(member.recruit);
+        }
         java.nio.file.Path file = java.nio.file.Path.of("runs", this.name + ".json.gz").toAbsolutePath();
         try {
             Files.createDirectories(file.getParent());
@@ -178,17 +216,40 @@ final class GroupRecorder {
                 for (int i = 0; i < m.records.size(); i++) owners.add(m.index);
             }
         }
-        w.write("{\"test\":" + quote(this.name) + ",\"group\":true,\"seed\":0,\"fallDistance\":" + settings.maxFallDistance()
+        w.write("{\"test\":" + quote(this.name) + ",\"group\":true,\"seed\":" + this.seed + ",\"fallDistance\":" + settings.maxFallDistance()
                 + ",\"async\":" + RecruitsServerConfig.UseAsyncPathfinding.get() + ",\"threads\":" + RecruitsServerConfig.AsyncPathfindingThreadsCount.get()
                 + ",\"dirtPath\":" + quote(settings.dirtPathPreference().name()) + ",\"margin\":" + settings.edgeMarginBlocks()
                 + ",\"range\":32,\"budget\":" + budget + ",\"outcome\":" + quote(outcome) + ",\"message\":" + quote(message)
-                + ",\"endTick\":" + this.helper.getTick() + ",\"setup\":" + this.setup
+                + ",\"endTick\":" + this.helper.getTick() + ",\"tickOffset\":" + (this.helper.getLevel().getGameTime() - this.helper.getTick())
+                + ",\"setup\":" + this.setup
                 + ",\"queue\":{\"max\":" + this.maxQueued + ",\"fullTicks\":" + this.queueFullTicks + "}"
                 + ",\"size\":[" + this.sizeX + "," + this.sizeY + "," + this.sizeZ + "],\"blocks\":\"");
-        w.write(RunRecorder.blocks(this.helper, this.sizeX, this.sizeY, this.sizeZ));
+        w.write(Recordings.blocks(this.helper, this.sizeX, this.sizeY, this.sizeZ));
         w.write("\",\"owner\":" + xyz(this.owner.getBlockX() - this.origin.getX(), this.owner.getBlockY() - this.origin.getY(), this.owner.getBlockZ() - this.origin.getZ()));
         w.write(",\"heat\":{\"follow\":" + heat(this.heatFollow) + ",\"detour\":" + heat(this.heatDetour) + "}");
-        w.write(",\"plans\":[" + String.join(",", this.plans) + "],\"recruits\":[");
+        w.write(",\"plans\":[" + String.join(",", this.plans) + "],\"planSteps\":" + this.planSteps.json());
+        // Found routes, each written once: a stuck recruit finds the same route again and again.
+        Map<String, Integer> routeIds = new HashMap<>();
+        List<String> routes = new ArrayList<>();
+        int[] routeOf = new int[all.size()];
+        for (int i = 0; i < all.size(); i++) {
+            int[] found = all.get(i).found;
+            if (found == null) {
+                routeOf[i] = -1;
+                continue;
+            }
+            StringBuilder route = new StringBuilder("[");
+            for (int p = 0; p < found.length; p += 3) {
+                if (p > 0) route.append(',');
+                route.append(xyz(found[p] - this.origin.getX(), found[p + 1] - this.origin.getY(), found[p + 2] - this.origin.getZ()));
+            }
+            String key = route.append(']').toString();
+            routeOf[i] = routeIds.computeIfAbsent(key, k -> {
+                routes.add(k);
+                return routes.size() - 1;
+            });
+        }
+        w.write(",\"routes\":[" + String.join(",", routes) + "],\"recruits\":[");
         for (Member m : this.members) {
             if (m.index > 0) w.write(',');
             m.write(w, offset[m.index]);
@@ -200,15 +261,23 @@ final class GroupRecorder {
         w.write(",\"searches\":[");
         Set<Integer> walked = new HashSet<>();
         for (Member m : this.members) for (int id : m.walkedIds) walked.add(offset[m.index] + id);
+        Map<Integer, Integer> kept = new HashMap<>();
+        for (Member m : this.members) m.keptCount.forEach((local, count) -> kept.put(offset[m.index] + local, count));
         Map<String, Integer> seen = new HashMap<>();
         for (int i = 0; i < all.size(); i++) {
             if (i > 0) w.write(',');
-            this.writeSearch(w, i, owners.get(i), all.get(i), walked.contains(i), seen);
+            this.writeSearch(w, i, owners.get(i), all.get(i), walked.contains(i), routeOf[i], kept.getOrDefault(i, -1), seen);
         }
         w.write("]}");
     }
 
-    private void writeSearch(Writer w, int id, int recruit, SearchTracer.SearchRecord r, boolean walked, Map<String, Integer> seen) throws IOException {
+    /**
+     * One search: its summary, its found route (an index into the routes table), how many of that route's
+     * points were kept after edge care if a recruit walked it (else -1), and its points when kept, each
+     * [x, y, z, expanded (1 or 0), index of the point it was reached from or -1].
+     */
+    private void writeSearch(Writer w, int id, int recruit, SearchTracer.SearchRecord r, boolean walked, int route, int keptCount,
+                             Map<String, Integer> seen) throws IOException {
         Path path = r.path;
         boolean done = r.finished && (path == null || !(path instanceof AsyncPath async) || async.isProcessed());
         boolean reached = "detour".equals(r.kind) ? r.reachedByPop : done && path != null && path.canReach();
@@ -219,35 +288,62 @@ final class GroupRecorder {
                 .append(",\"dirtPath\":").append(quote(r.dirtPath)).append(",\"margin\":").append(r.margin).append(",\"maxFall\":").append(r.maxFall)
                 .append(",\"done\":").append(done).append(",\"noStart\":").append(r.noStart).append(",\"reached\":").append(reached)
                 .append(",\"n\":").append(r.popCount).append(",\"x\":").append(r.expandedCount).append(",\"behind\":").append(r.behindCount)
-                .append(",\"server\":").append(r.onServerThread);
-        if ((walked || r.keepPoints) && done && path != null) {
-            head.append(",\"path\":[");
-            for (int i = 0; i < path.getNodeCount(); i++) {
+                .append(",\"server\":").append(r.onServerThread)
+                .append(",\"found\":").append(route).append(",\"foundReached\":").append(r.foundReached).append(",\"kept\":").append(keptCount);
+        // Whether the path a recruit walked, as edge care left it, is the start of the route the search found.
+        String keptIsStart = "null";
+        if (walked && done && path != null && r.found != null) {
+            boolean start = path.getNodeCount() * 3 <= r.found.length;
+            for (int i = 0; start && i < path.getNodeCount(); i++) {
                 Node node = path.getNode(i);
-                if (i > 0) head.append(',');
-                head.append(xyz(node.x - this.origin.getX(), node.y - this.origin.getY(), node.z - this.origin.getZ()));
+                start = node.x == r.found[3 * i] && node.y == r.found[3 * i + 1] && node.z == r.found[3 * i + 2];
             }
-            head.append(']');
-        } else {
-            head.append(",\"path\":[]");
+            keptIsStart = String.valueOf(start);
         }
+        head.append(",\"keptIsStart\":").append(keptIsStart);
         if (!r.keepPoints) {
             w.write(head.append(",\"detail\":false,\"pops\":null}").toString());
             return;
         }
-        String signature = r.kind + "|" + head.substring(head.indexOf(",\"start\""), head.indexOf(",\"server\""));
+        String signature = r.kind + "|" + head.substring(head.indexOf(",\"start\""), head.indexOf(",\"server\"")) + "|" + route;
         Integer same = seen.get(signature);
         if (same != null) {
             w.write(head.append(",\"same\":").append(same).append('}').toString());
             return;
         }
         seen.put(signature, id);
-        w.write(head.append(",\"detail\":false,\"pops\":[").toString());
+        w.write(head.append(",\"detail\":").append(r.detail).append(",\"pops\":[").toString());
+        Map<Long, Integer> index = new HashMap<>();
         for (int p = 0; p < r.pops.size(); p++) {
             SearchTracer.Pop pop = r.pops.get(p);
             if (p > 0) w.write(',');
+            index.put(BlockPos.asLong(pop.x, pop.y, pop.z), p);
+            Integer from = pop.from == null ? null : index.get(BlockPos.asLong(pop.from[0], pop.from[1], pop.from[2]));
             int x = pop.x - this.origin.getX(), y = pop.y - this.origin.getY(), z = pop.z - this.origin.getZ();
-            w.write(pop.expanded ? xyz(x, y, z) : "[" + x + "," + y + "," + z + ",0]");
+            if (!r.detail) {
+                w.write("[" + x + "," + y + "," + z + "," + (pop.expanded ? 1 : 0) + "," + (from == null ? -1 : from) + "]");
+                continue;
+            }
+            // Full detail: [x, y, z, g, h, f, costMalus, edge distance, edge ring, reached-from index, steps asked, neighbours].
+            StringBuilder s = new StringBuilder("[").append(x).append(',').append(y).append(',').append(z).append(',')
+                    .append(num(pop.g)).append(',').append(num(pop.h)).append(',').append(num(pop.f)).append(',').append(num(pop.costMalus)).append(',')
+                    .append(pop.edgeDistance).append(",\"").append(pop.expanded ? pop.ring : "-").append("\",").append(from == null ? -1 : from).append(",[");
+            for (int c = 0; c < pop.candidates.size(); c++) {
+                SearchTracer.Candidate cand = pop.candidates.get(c);
+                if (c > 0) s.append(',');
+                s.append("[\"").append(cand.direction().charAt(0)).append("\",\"").append(cand.result().charAt(0)).append("\",")
+                        .append(cand.askX() - this.origin.getX()).append(',').append(cand.askY() - this.origin.getY()).append(',').append(cand.askZ() - this.origin.getZ()).append(',')
+                        .append(cand.y() - this.origin.getY()).append(',').append(num(cand.costMalus())).append(',').append(cand.deadEndSteps()).append(']');
+            }
+            s.append("],[");
+            for (int n = 0; n < pop.neighbours.size(); n++) {
+                SearchTracer.Neighbour nb = pop.neighbours.get(n);
+                if (n > 0) s.append(',');
+                s.append('[').append(nb.x - this.origin.getX()).append(',').append(nb.y - this.origin.getY()).append(',').append(nb.z - this.origin.getZ()).append(',')
+                        .append(num(nb.costMalus)).append(',').append(num(nb.gBefore)).append(',').append(nb.openBefore ? 1 : 0).append(',')
+                        .append(num(nb.gAfter)).append(',').append(num(nb.hAfter)).append(',').append(num(nb.fAfter)).append(',').append(nb.updated ? 1 : 0).append(']');
+            }
+            w.write(s.append("]]").toString());
         }
         w.write("]}");
     }
@@ -277,8 +373,11 @@ final class GroupRecorder {
         final List<SearchTracer.SearchRecord> records = new ArrayList<>();
         private final IdentityHashMap<Path, Integer> pathIds = new IdentityHashMap<>();
         private final Set<Integer> walkedIds = new HashSet<>();
+        /** For each walked search, the fewest points its path had while walked: what edge care kept. */
+        final Map<Integer, Integer> keptCount = new HashMap<>();
         private SearchTracer.SearchRecord prepared;
-        private long lastKeptFollow = Long.MIN_VALUE;
+        /** The game tick of the last follow search that kept its points; far enough back that the first one does. */
+        private long lastKeptFollow = -2L * FOLLOW_SAMPLE_TICKS;
         private final FloatArrayList positions = new FloatArrayList();
         private final IntArrayList states = new IntArrayList();
         int[] spawn;
@@ -304,13 +403,21 @@ final class GroupRecorder {
 
         @Override
         public boolean detail(SearchTracer.SearchRecord record) {
-            return false;
+            GroupRecorder group = GroupRecorder.this;
+            synchronized (group.detailedKeys) {
+                if (group.detailed >= group.detailLimit) return false;
+                String key = record.kind + ":" + (record.start == null ? "-" : group.rel(record.start)) + ">"
+                        + (record.targets.isEmpty() ? "-" : group.rel(record.targets.get(0)));
+                if (!group.detailedKeys.add(key)) return false;
+                group.detailed++;
+                return true;
+            }
         }
 
         @Override
         public synchronized boolean keepPoints(SearchTracer.SearchRecord record) {
             if ("detour".equals(record.kind)) return GroupRecorder.this.detourKept.incrementAndGet() <= DETOUR_POINTS;
-            if (record.tick - this.lastKeptFollow < FOLLOW_SAMPLE_TICKS) return false;
+            if (record.tick - this.lastKeptFollow < GroupRecorder.this.followSampleTicks) return false;
             this.lastKeptFollow = record.tick;
             return true;
         }
@@ -361,7 +468,10 @@ final class GroupRecorder {
             synchronized (this) {
                 id = walking == null ? null : this.pathIds.get(walking);
             }
-            if (id != null) this.walkedIds.add(id);
+            if (id != null) {
+                this.walkedIds.add(id);
+                if (!(walking instanceof AsyncPath async) || async.isProcessed()) this.keptCount.merge(id, walking.getNodeCount(), Math::min);
+            }
             int flags = (this.recruit.isFollowing() ? 1 : 0)
                     | (this.recruit.getNavigation() instanceof AsyncPathNavigation n && n.hasPendingPath() ? 2 : 0)
                     | (walking instanceof AsyncPath async && !async.isProcessed() ? 4 : 0)

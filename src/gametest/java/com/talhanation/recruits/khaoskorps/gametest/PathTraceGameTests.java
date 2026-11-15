@@ -115,7 +115,7 @@ public class PathTraceGameTests {
             for (SearchTracer.SearchRecord record : recorded) if (!record.finished) return;
             json.append("{\"seed\":1,\"size\":[64,24,64],\"maxFall\":3,\"margin\":").append(FollowSettings.current().edgeMarginBlocks())
                     .append(",\"range\":").append(RANGE).append(",\"budget\":").append(BUDGET)
-                    .append(",\"blocks\":\"").append(RunRecorder.blocks(helper)).append("\",\"searches\":[");
+                    .append(",\"blocks\":\"").append(Recordings.blocks(helper)).append("\",\"searches\":[");
             for (int i = 0; i < SEARCHES.size(); i++) {
                 if (i > 0) json.append(',');
                 SearchTracer.SearchRecord record = recorded.get(i);

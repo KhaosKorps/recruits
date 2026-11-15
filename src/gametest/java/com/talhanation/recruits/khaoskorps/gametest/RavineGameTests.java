@@ -82,8 +82,10 @@ public class RavineGameTests {
         pin(helper, owner, x + 0.5, terrain.stand[x][ownerZ], ownerZ + 0.5);
         DetourGameTests.standing(helper, owner);
         AbstractRecruitEntity recruit = followingRecruit(helper, owner, x, terrain.stand[x][8], 8);
-        RunRecorder recorder = new RunRecorder(testName, helper, terrain.seed, recruit, owner);
-        recorder.attach();
+        // One recruit, every follow search with its points, the first 60 distinct searches in full detail.
+        GroupRecorder recorder = new GroupRecorder(testName, helper, owner, RavineTerrain.SIZE, RavineTerrain.TOP + 1, RavineTerrain.SIZE,
+                "{\"seed\":" + terrain.seed + "}", terrain.seed, 0, 60);
+        GroupRecorder.Member member = recorder.add(recruit);
         String[] last = {"no check has run yet"};
         helper.runAfterDelay(1, () -> assertFollowPreconditions(recruit));
         helper.onEachTick(() -> {
@@ -91,10 +93,15 @@ public class RavineGameTests {
             try {
                 checkSafe(helper, terrain, recruit);
             } catch (GameTestAssertException failure) {
-                recorder.finish("failed", failure.getMessage());
+                String why = failure.getMessage();
+                member.outcome = why.contains("water") ? "water" : why.contains("died") ? "dead" : "pit";
+                recorder.finish("failed", why);
                 throw failure;
             }
-            if (helper.getTick() >= TIMEOUT - 2) recorder.finish("timed out", last[0]);
+            if (helper.getTick() >= TIMEOUT - 2) {
+                member.outcome = "stuck";
+                recorder.finish("timed out", last[0]);
+            }
         });
         helper.succeedWhen(() -> {
             if (recruit.distanceToSqr(owner) > 3.5 * 3.5) {
@@ -103,6 +110,7 @@ public class RavineGameTests {
                         + describe(helper, recruit) + "; " + navigationState(helper, recruit);
                 throw new GameTestAssertException(last[0]);
             }
+            member.outcome = "reached";
             recorder.finish("passed", "reached its owner at tick " + helper.getTick());
             removeOwner(helper, owner);
         });

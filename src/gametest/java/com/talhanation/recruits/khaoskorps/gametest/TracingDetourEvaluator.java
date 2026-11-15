@@ -18,7 +18,7 @@ import java.util.Queue;
  * The detour planner's evaluator with a {@link SearchTracer} on it, so the planner's own searches can
  * be recorded too. The planner takes its evaluators from a shared pool;
  * {@link #fillThePool} swaps in copies of this class, which behave exactly as the real one and record
- * a search only when the recruit it is run for has a {@link RunRecorder}.
+ * a search only when the recruit it is run for is being recorded ({@link Recordings#recorderFor}).
  */
 final class TracingDetourEvaluator extends DetourNodeEvaluator {
 
@@ -33,7 +33,7 @@ final class TracingDetourEvaluator extends DetourNodeEvaluator {
     @Override
     public void prepare(PathNavigationRegion region, Mob mob) {
         super.prepare(region, mob);
-        this.tracer.begin(RunRecorder.recorderFor(mob), "detour", mob, true);
+        this.tracer.begin(Recordings.recorderFor(mob), "detour", mob, true);
     }
 
     @Override

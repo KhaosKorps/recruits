@@ -81,8 +81,8 @@ public class CapturedRavineGroupTests {
             pin(helper, owner, to[0] + 0.5, to[1], to[2] + 0.5);
             DetourGameTests.standing(helper, owner);
             List<int[]> spawns = spawnPoints(helper, from, size, seed);
-            StringBuilder setup = new StringBuilder("{\"from\":" + RunRecorder.xyz(from[0], from[1], from[2]) + ",\"to\":"
-                    + RunRecorder.xyz(to[0], to[1], to[2]) + ",\"size\":" + size + ",\"seed\":" + seed + ",\"spawnRadius\":" + SPAWN_RADIUS
+            StringBuilder setup = new StringBuilder("{\"from\":" + Recordings.xyz(from[0], from[1], from[2]) + ",\"to\":"
+                    + Recordings.xyz(to[0], to[1], to[2]) + ",\"size\":" + size + ",\"seed\":" + seed + ",\"spawnRadius\":" + SPAWN_RADIUS
                     + ",\"runTicks\":" + RUN_TICKS + "}");
             GroupRecorder recorder = new GroupRecorder(name, helper, owner, SIZE_X, SIZE_Y, SIZE_Z, setup.toString());
             for (int[] spawn : spawns) recorder.add(followingRecruit(helper, owner, spawn[0], spawn[1], spawn[2]));

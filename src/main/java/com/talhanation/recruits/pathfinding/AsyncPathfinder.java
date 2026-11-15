@@ -140,10 +140,14 @@ public class AsyncPathfinder extends PathFinder {
                 for (int l = 0; l < k; ++l) {
                     Node node1 = neighbors[l];
                     float f = this.distance(node, node1);
-                    node1.walkedDistance = node.walkedDistance + f;
+                    // KhaosKorps fork: the walked distance is kept only with the route that is kept. Vanilla wrote it
+                    // before deciding, so a longer route touching a point later overwrote it, and the inflation built up
+                    // outwards until points about half the range away counted as out of range.
+                    float walked = node.walkedDistance + f;
                     float f1 = node.g + f + node1.costMalus;
                     if (dropCost > 0.0F && node.y - node1.y >= 2) f1 += dropCost * (node.y - node1.y); // KhaosKorps fork
-                    if (node1.walkedDistance < p_164720_ && (!node1.inOpenSet() || f1 < node1.g)) {
+                    if (walked < p_164720_ && (!node1.inOpenSet() || f1 < node1.g)) {
+                        node1.walkedDistance = walked;
                         node1.cameFrom = node;
                         node1.g = f1;
                         node1.h = this.getBestH(node1, p_164719_) * 1.5F;

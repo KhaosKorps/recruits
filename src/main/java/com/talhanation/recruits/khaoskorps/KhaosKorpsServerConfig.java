@@ -168,8 +168,10 @@ public final class KhaosKorpsServerConfig {
                 .comment("Multiplies every recruit's movement speed. 1.0 = unchanged. Never saved: a recruit's own speed stays as it was.")
                 .defineInRange("MovementSpeedMultiplier", d.movementSpeedMultiplier(), 0.1, 3.0);
         SwimSpeedMultiplier = builder
-                .comment("Multiplies every recruit's swimming speed. 1.0 = unchanged. Never saved: a recruit's own speed stays as it was.")
-                .defineInRange("SwimSpeedMultiplier", d.swimSpeedMultiplier(), 0.1, 3.0);
+                .comment("Multiplies every recruit's swimming speed. 1.0 = unchanged. Never saved: a recruit's own speed stays as it was.",
+                        "Recruits swim at 0.3, under a third of a normal mob's 1.0. Measured against a full current in a shallow stream:",
+                        "x8 just holds its place, x10 gains about 1.6 blocks every 5 seconds.")
+                .defineInRange("SwimSpeedMultiplier", d.swimSpeedMultiplier(), 0.1, 20.0);
         PathLog = builder
                 .comment("Write the path measurement log to logs/recruits-paths/ in the server folder: one CSV row per path search, one per",
                         "following recruit every 100 ticks, and one per settings change, in three files named by the time logging",

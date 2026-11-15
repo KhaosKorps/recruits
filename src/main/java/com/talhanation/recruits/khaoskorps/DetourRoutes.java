@@ -122,8 +122,10 @@ public final class DetourRoutes {
                     if (owner.onGround()) plan.setGoal(owner.blockPosition());
                     allowance -= plan.advance(Math.max(0, allowance));
                     if (plan.status() != DetourPlan.Status.PLANNING) {
-                        Main.LOGGER.info("[KhaosKorps] Detour for the recruits following {}: {}, {} waypoints, {} searches, {} ticks",
-                                owner.getScoreboardName(), plan.status(), plan.route().size(), plan.searches(), plan.ticks());
+                        // The start and the recruit that asked tell a failing plan's place in the world from the log alone.
+                        Main.LOGGER.info("[KhaosKorps] Detour for the recruits following {}: {}, {} waypoints, {} searches, {} ticks, from {} (asked by recruit {}) toward {}",
+                                owner.getScoreboardName(), plan.status(), plan.route().size(), plan.searches(), plan.ticks(),
+                                plan.start().toShortString(), plan.walker().getStringUUID(), plan.goal().toShortString());
                     }
                 }
                 case FOUND -> {

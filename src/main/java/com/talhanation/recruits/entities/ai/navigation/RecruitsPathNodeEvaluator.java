@@ -52,6 +52,9 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
     private final LongOpenHashSet edgeCostedNodes = new LongOpenHashSet();
     // KhaosKorps fork: water points refused for lying beside a deadly drop, kept refused on every later look.
     private final LongOpenHashSet refusedWater = new LongOpenHashSet();
+    // KhaosKorps fork: whether this search refuses water beside a deadly drop: only from dry ground. A mob
+    // already in the water must be free to swim out by whatever way is cheapest, or it has no way out at all.
+    private boolean refuseWaterNearDrops;
     // KhaosKorps fork: the dead-end check for this search (0 is off), its answers by landing spot, and the search's targets.
     private int deadEndNodes;
     private float flowingWaterCost; // KhaosKorps fork: FlowingWaterCost for this search
@@ -84,6 +87,7 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
         this.dropCostPerBlock = this.edgeMargin > 0 ? (float) settings.dropCostPerBlock() : 0.0F; // KhaosKorps fork
         this.dirtPath = settings.dirtPathPreference(); // KhaosKorps fork
         this.flowingWaterCost = (float) settings.flowingWaterCost(); // KhaosKorps fork
+        this.refuseWaterNearDrops = !mob.isInWater(); // KhaosKorps fork
         if(mob.isVehicle()){
             this.entityHeight = Mth.floor(mob.getBbHeight() + (float) getEntityHeight());
         }
@@ -156,9 +160,11 @@ public class RecruitsPathNodeEvaluator extends NodeEvaluator {
             if (this.edgeMargin > 0 && node.costMalus >= 0.0F && this.edgeCostedNodes.add(BlockPos.asLong(x, y, z))) {
                 int distance = EdgeProbe.distanceToDangerousDrop(this.level, x, y, z, this.edgeMaxFall, this.edgeMargin, this.edgeDropColumns);
                 node.costMalus += EdgeCost.malus(distance, this.edgeMargin);
-                // KhaosKorps fork: water within the margin of such a drop is no place to go: a current, or a slow
-                // swim against a push, can carry the mob over.
-                if (distance != EdgeProbe.NONE && blockpathtypes == BlockPathTypes.WATER) this.refusedWater.add(BlockPos.asLong(x, y, z));
+                // KhaosKorps fork: from dry ground, water within the margin of such a drop is no place to go: a
+                // current, or a slow swim against a push, can carry the mob over.
+                if (this.refuseWaterNearDrops && distance != EdgeProbe.NONE && blockpathtypes == BlockPathTypes.WATER) {
+                    this.refusedWater.add(BlockPos.asLong(x, y, z));
+                }
             }
             // KhaosKorps fork: FlowingWaterCost, added once, when the point is first made.
             if (isNew && this.flowingWaterCost > 0.0F && node.costMalus >= 0.0F && blockpathtypes == BlockPathTypes.WATER) {

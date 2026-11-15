@@ -126,18 +126,99 @@ public class WaterEdgeGameTests {
         });
     }
 
+    private static final String SWIM_TEN = "khaoskorps_water_swim_10";
+
+    /** The test server's swimming: SwimSpeedMultiplier 10. */
+    @net.minecraft.gametest.framework.BeforeBatch(batch = SWIM_TEN)
+    public static void swimTen(net.minecraft.server.level.ServerLevel level) {
+        forkSettings(() -> com.talhanation.recruits.khaoskorps.KhaosKorpsServerConfig.SwimSpeedMultiplier.set(10.0));
+    }
+
+    /** Puts the fork's settings back after the swim batch. */
+    @net.minecraft.gametest.framework.AfterBatch(batch = SWIM_TEN)
+    public static void afterSwimTen(net.minecraft.server.level.ServerLevel level) {
+        resetForkSettings();
+    }
+
+    /**
+     * A following recruit already in a stream near a waterfall gets out to the bank instead of being
+     * carried over: the stream, 3 wide (z 9..11), runs from sources at x 7 to a cliff at x 15 and pours
+     * over it; the recruit starts in its middle at x 13, two blocks from the edge, and its owner stands
+     * on the bank. Swimming is the test server's, x10.
+     */
+    @GameTest(template = WIDE, timeoutTicks = 300, batch = SWIM_TEN)
+    public static void aFollowerInAStreamBesideAWaterfallGetsOut(GameTestHelper helper) {
+        ground(helper, 14, 20);
+        for (int z = 9; z <= 11; z++) {
+            for (int x = 0; x <= 14; x++) helper.setBlock(x, GROUND, z, x >= 7 ? Blocks.AIR : Blocks.STONE);
+            helper.setBlock(7, GROUND, z, Blocks.WATER);
+        }
+        // The owner is made and pinned now: pin schedules a task for every tick, which a delayed task mustn't do.
+        ServerPlayer[] owner = {owner(helper, 12.5, GROUND + 1, 16.5)};
+        pin(helper, owner[0], 12.5, GROUND + 1, 16.5);
+        AbstractRecruitEntity[] follower = new AbstractRecruitEntity[1];
+        helper.runAfterDelay(60, () -> follower[0] = followingRecruit(helper, owner[0], 13, GROUND, 10));
+        helper.onEachTick(() -> {
+            AbstractRecruitEntity recruit = follower[0];
+            if (recruit == null) return;
+            net.minecraft.world.phys.Vec3 at = recruit.position().subtract(net.minecraft.world.phys.Vec3.atLowerCornerOf(helper.absolutePos(BlockPos.ZERO)));
+            if (at.y < GROUND - 0.5 || at.x > 15.0) {
+                recruit.discard();
+                removeOwner(helper, owner[0]);
+                throw new GameTestAssertException(String.format(java.util.Locale.ROOT,
+                        "the recruit was carried over the edge: at (%.1f, %.1f, %.1f) at tick %d", at.x, at.y, at.z, helper.getTick()));
+            }
+            if (at.z >= 12.0 && at.y >= GROUND + 0.9) {
+                recruit.discard();
+                removeOwner(helper, owner[0]);
+                helper.succeed();
+            }
+        });
+    }
+
+    /**
+     * A following recruit's search, starting in water a block from a waterfall, finds a way out: all the
+     * water round it lies within the edge margin, where a search from dry ground refuses to go. The
+     * recruit is held in place in a still stream of source blocks (z 9..11, x 7..14) that spills over a
+     * cliff at x 15; its owner stands on the bank.
+     */
+    @GameTest(template = WIDE, timeoutTicks = 200)
+    public static void aSearchFromWaterBesideADropFindsAWayOut(GameTestHelper helper) {
+        ground(helper, 14, 20);
+        for (int z = 9; z <= 11; z++) {
+            for (int x = 7; x <= 14; x++) helper.setBlock(x, GROUND, z, Blocks.WATER);
+        }
+        ServerPlayer owner = owner(helper, 12.5, GROUND + 1, 16.5);
+        pin(helper, owner, 12.5, GROUND + 1, 16.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 14, GROUND, 10);
+        net.minecraft.world.phys.Vec3 hold = helper.absoluteVec(new net.minecraft.world.phys.Vec3(14.5, GROUND, 10.5));
+        helper.onEachTick(() -> {
+            recruit.setPos(hold.x, hold.y, hold.z);
+            recruit.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+            if (helper.getTick() < 20) return;
+            Path path = recruit.getNavigation().getPath();
+            if (path == null || (path instanceof AsyncPath async && !async.isProcessed())) return;
+            String route = describe(helper, path);
+            BlockPos end = path.getEndNode() == null ? null : path.getEndNode().asBlockPos().subtract(helper.absolutePos(BlockPos.ZERO));
+            recruit.discard();
+            removeOwner(helper, owner);
+            if (end == null || end.getZ() < 12) {
+                throw new GameTestAssertException("the search from the water found no way to the bank: " + route);
+            }
+            helper.succeed();
+        });
+    }
+
     /**
      * After 60 ticks, so placed water has spread and settled, runs a following recruit's first path
      * from (fx, fz) to an owner at (tx, tz) and checks it.
      */
     private static void crossing(GameTestHelper helper, int fx, int fz, int tx, int tz, java.util.function.Consumer<Path> check) {
-        ServerPlayer[] owner = new ServerPlayer[1];
+        // The owner is made and pinned now: pin schedules a task for every tick, which a delayed task mustn't do.
+        ServerPlayer[] owner = {owner(helper, tx + 0.5, GROUND + 1, tz + 0.5)};
+        pin(helper, owner[0], tx + 0.5, GROUND + 1, tz + 0.5);
         AbstractRecruitEntity[] follower = new AbstractRecruitEntity[1];
-        helper.runAfterDelay(60, () -> {
-            owner[0] = owner(helper, tx + 0.5, GROUND + 1, tz + 0.5);
-            pin(helper, owner[0], tx + 0.5, GROUND + 1, tz + 0.5);
-            follower[0] = followingRecruit(helper, owner[0], fx, GROUND + 1, fz);
-        });
+        helper.runAfterDelay(60, () -> follower[0] = followingRecruit(helper, owner[0], fx, GROUND + 1, fz));
         helper.onEachTick(() -> {
             if (follower[0] == null) return;
             AbstractRecruitEntity recruit = follower[0];

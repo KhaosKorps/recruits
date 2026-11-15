@@ -1,0 +1,166 @@
+package com.talhanation.recruits.khaoskorps.gametest;
+
+import com.talhanation.recruits.Main;
+import com.talhanation.recruits.entities.AbstractRecruitEntity;
+import com.talhanation.recruits.init.ModEntityTypes;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.gametest.framework.AfterBatch;
+import net.minecraft.gametest.framework.BeforeBatch;
+import net.minecraft.gametest.framework.GameTest;
+import net.minecraft.gametest.framework.GameTestAssertException;
+import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.gametest.GameTestHolder;
+import net.minecraftforge.gametest.PrefixGameTestTemplate;
+
+import java.util.Locale;
+
+/**
+ * A recruit resting at night walks to a free bed and lies down beside it: the nearest bed it can reach,
+ * never one behind a wall, and a lone bed too.
+ *
+ * Each scene is a stone floor (recruits stand at y 2) inside a barrier ring at the template's edge. A
+ * recruit rests at night when it wanders (follow state 0), has no target and is hurt, so each one starts
+ * at half health. Each test runs in its own batch, set to night before it and back to day after it:
+ * level time is shared, and a bed in a neighbouring test's scene is within a recruit's bed search.
+ */
+@GameTestHolder(Main.MOD_ID)
+@PrefixGameTestTemplate(false)
+public class BedRestGameTests {
+
+    private static final String EMPTY = HarnessGameTests.EMPTY_TEMPLATE;
+    private static final String NIGHT_WALLED = "khaoskorps_night_walled_bed";
+    private static final String NIGHT_NEAREST = "khaoskorps_night_nearest_bed";
+    private static final String NIGHT_LONE = "khaoskorps_night_lone_bed";
+    private static final long NIGHT = 18000L, DAY = 1000L;
+    /** How far from a bed's centre a recruit may last stand awake and still have walked to it, in blocks. */
+    private static final double WALKED_TO = 2.5;
+
+    @BeforeBatch(batch = NIGHT_WALLED)
+    public static void nightWalled(ServerLevel level) {
+        level.setDayTime(NIGHT);
+    }
+
+    @AfterBatch(batch = NIGHT_WALLED)
+    public static void dayAfterWalled(ServerLevel level) {
+        level.setDayTime(DAY);
+    }
+
+    @BeforeBatch(batch = NIGHT_NEAREST)
+    public static void nightNearest(ServerLevel level) {
+        level.setDayTime(NIGHT);
+    }
+
+    @AfterBatch(batch = NIGHT_NEAREST)
+    public static void dayAfterNearest(ServerLevel level) {
+        level.setDayTime(DAY);
+    }
+
+    @BeforeBatch(batch = NIGHT_LONE)
+    public static void nightLone(ServerLevel level) {
+        level.setDayTime(NIGHT);
+    }
+
+    @AfterBatch(batch = NIGHT_LONE)
+    public static void dayAfterLone(ServerLevel level) {
+        level.setDayTime(DAY);
+    }
+
+    /**
+     * A bed in a sealed room 4 blocks away and a bed in the open 5 blocks away: the recruit sleeps in the
+     * open one, having walked to it, and never in the sealed one.
+     */
+    @GameTest(template = EMPTY, timeoutTicks = 1300, batch = NIGHT_WALLED)
+    public static void aRecruitSleepsInABedItCanReachNotOneBehindAWall(GameTestHelper helper) {
+        floor(helper);
+        for (int x = 3; x <= 7; x++) for (int z = 2; z <= 6; z++) {
+            helper.setBlock(x, 5, z, Blocks.STONE_BRICKS);
+            for (int y = 2; y <= 4; y++) if (x == 3 || x == 7 || z == 2 || z == 6) helper.setBlock(x, y, z, Blocks.STONE_BRICKS);
+        }
+        BlockPos sealed = bed(helper, 5, 4);
+        BlockPos open = bed(helper, 14, 4);
+        watch(helper, recruit(helper, 9, 4), open, sealed, 1200);
+    }
+
+    /** Free beds 3 and 10 blocks away: the recruit sleeps in the nearer one. */
+    @GameTest(template = EMPTY, timeoutTicks = 900, batch = NIGHT_NEAREST)
+    public static void aRecruitSleepsInTheNearestFreeBed(GameTestHelper helper) {
+        floor(helper);
+        BlockPos near = bed(helper, 7, 4);
+        BlockPos far = bed(helper, 14, 4);
+        watch(helper, recruit(helper, 4, 4), near, far, 800);
+    }
+
+    /** The only free bed in range, 10 blocks away: the recruit walks to it and sleeps. */
+    @GameTest(template = EMPTY, timeoutTicks = 900, batch = NIGHT_LONE)
+    public static void aRecruitSleepsInTheOnlyFreeBedInRange(GameTestHelper helper) {
+        floor(helper);
+        BlockPos lone = bed(helper, 13, 4);
+        watch(helper, recruit(helper, 3, 4), lone, null, 800);
+    }
+
+    /** Stone under y 2 across the template, and barriers on its edge up to y 6. */
+    private static void floor(GameTestHelper helper) {
+        for (int x = 0; x < 18; x++) for (int z = 0; z < 9; z++) {
+            helper.setBlock(x, 0, z, Blocks.STONE);
+            helper.setBlock(x, 1, z, Blocks.STONE);
+            if (x == 0 || x == 17 || z == 0 || z == 8) for (int y = 2; y <= 6; y++) helper.setBlock(x, y, z, Blocks.BARRIER);
+        }
+    }
+
+    /** A red bed with its foot at (x, 2, z) and its head one block south; returns the foot's absolute position. */
+    private static BlockPos bed(GameTestHelper helper, int x, int z) {
+        BlockState bed = Blocks.RED_BED.defaultBlockState().setValue(BedBlock.FACING, Direction.SOUTH);
+        helper.setBlock(x, 2, z, bed.setValue(BedBlock.PART, BedPart.FOOT));
+        helper.setBlock(x, 2, z + 1, bed.setValue(BedBlock.PART, BedPart.HEAD));
+        return helper.absolutePos(new BlockPos(x, 2, z));
+    }
+
+    /** A wandering recruit at half health standing at (x, 2, z). */
+    private static AbstractRecruitEntity recruit(GameTestHelper helper, int x, int z) {
+        AbstractRecruitEntity recruit = helper.spawn(ModEntityTypes.RECRUIT.get(), x, 2, z);
+        recruit.setFollowState(0);
+        recruit.setHealth(recruit.getMaxHealth() * 0.5F);
+        return recruit;
+    }
+
+    /**
+     * Follows the recruit each tick until it lies down or {@code ticks} pass, then checks that it lies in
+     * {@code expected}, last stood awake within {@link #WALKED_TO} blocks of it, and never lay in {@code never}.
+     * A bed is given by its foot; a sleeper may lie at either half (vanilla's own sleeping spot is the head).
+     */
+    private static void watch(GameTestHelper helper, AbstractRecruitEntity recruit, BlockPos expected, BlockPos never, int ticks) {
+        Vec3[] lastAwake = {recruit.position()};
+        boolean[] judged = {false};
+        boolean night = helper.getLevel().isNight();
+        helper.onEachTick(() -> {
+            if (judged[0]) return;
+            long tick = helper.getTick();
+            if (!recruit.isSleeping()) {
+                lastAwake[0] = recruit.position();
+                if (tick < ticks) return;
+            }
+            judged[0] = true;
+            BlockPos in = recruit.getSleepingPos().orElse(null);
+            double jump = in == null ? -1 : Math.sqrt(in.distToCenterSqr(lastAwake[0]));
+            // Relative to the template's corner; GameTestHelper.relativePos turns positions half round.
+            BlockPos origin = helper.absolutePos(BlockPos.ZERO);
+            Vec3 at = lastAwake[0].subtract(origin.getX(), origin.getY(), origin.getZ());
+            String report = String.format(Locale.ROOT, "night %s; by tick %d asleep in %s (expected %s); last stood awake at %.1f %.1f %.1f, %.1f blocks from that bed's centre",
+                    night, tick, in == null ? "no bed" : in.subtract(origin).toShortString(), expected.subtract(origin).toShortString(),
+                    at.x, at.y, at.z, jump);
+            Main.LOGGER.info("[KhaosKorps measure] bed rest: {}", report);
+            recruit.discard();
+            if (in != null && never != null && (in.equals(never) || in.equals(never.south()))) throw new GameTestAssertException("asleep in the bed it must not use: " + report);
+            if (!expected.equals(in) && !expected.south().equals(in)) throw new GameTestAssertException("not asleep in the expected bed: " + report);
+            if (jump > WALKED_TO) throw new GameTestAssertException("lay down from too far away: " + report);
+            helper.succeed();
+        });
+    }
+}

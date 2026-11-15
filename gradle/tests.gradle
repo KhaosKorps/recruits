@@ -101,6 +101,12 @@ minecraft {
             property 'khaoskorps.groupTests', (project.findProperty('groupTests') ?: '').toString()
             // gradlew runGameTestServer -PgroupTests=all -PgroupDirtPath=OFF (or ONCE): the group runs' dirt-path setting.
             property 'khaoskorps.groupDirtPath', (project.findProperty('groupDirtPath') ?: '').toString()
+            // gradlew runGameTestServer -PgroupTests=custom -PgroupFrom=x,y,z -PgroupTo=x,y,z [-PgroupSize=24]:
+            // one run between two points in the test server's world, to replay a test done there.
+            property 'khaoskorps.groupFrom', (project.findProperty('groupFrom') ?: '').toString()
+            property 'khaoskorps.groupTo', (project.findProperty('groupTo') ?: '').toString()
+            property 'khaoskorps.groupSize', (project.findProperty('groupSize') ?: '24').toString()
+            property 'khaoskorps.groupExtra', (project.findProperty('groupExtra') ?: '').toString()
             mods {
                 recruits {
                     source sourceSets.main

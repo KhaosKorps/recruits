@@ -47,6 +47,8 @@ public class CapturedRavineGroupTests {
     static final int SPAWN_RADIUS = 6;
     private static final int[] A = {41, 65, 15};
     private static final int[] B = {48, 66, 40};
+    /** The world position of the arena's corner (0, 0, 0): where the ravine was captured from the test server's world. */
+    private static final int[] CAPTURED_FROM = {-207, -4, -399};
     private static final int SIZE_X = 96, SIZE_Y = 77, SIZE_Z = 48;
     private static final double IN_THE_PIT_BELOW = 48.0;
 
@@ -55,9 +57,20 @@ public class CapturedRavineGroupTests {
         String which = System.getProperty(PROPERTY, "");
         List<TestFunction> tests = new ArrayList<>();
         if (which.isEmpty()) return tests;
+        if (which.equals("custom")) {
+            // One run between two points given in the test server's world coordinates, to replay a test done there.
+            int[] from = arena(System.getProperty("khaoskorps.groupFrom", ""), "khaoskorps.groupFrom");
+            int[] to = arena(System.getProperty("khaoskorps.groupTo", ""), "khaoskorps.groupTo");
+            int size = Integer.parseInt(System.getProperty("khaoskorps.groupSize", "24").trim());
+            String name = "aGroupFollowsAcrossTheCapturedRavine_custom_" + size;
+            tests.add(new TestFunction("khaoskorps_group_custom", name, Main.MOD_ID + ":" + CapturedRavineGameTests.RAVINE_TEMPLATE,
+                    RUN_TICKS + 40, 0L, false, helper -> groupRun(helper, name, from, to, size, 300 + size)));
+            Main.LOGGER.info("[KhaosKorps measure] custom group run: {} recruits from arena {} to arena {}", size, java.util.Arrays.toString(from), java.util.Arrays.toString(to));
+            return tests;
+        }
         boolean all = which.equals("all");
         if (!all && !which.equals("pilot")) {
-            throw new IllegalArgumentException(PROPERTY + " is \"" + which + "\"; it takes \"pilot\" or \"all\"");
+            throw new IllegalArgumentException(PROPERTY + " is \"" + which + "\"; it takes \"pilot\", \"all\" or \"custom\"");
         }
         int[] sizes = all ? new int[]{1, 6, 12, 24} : new int[]{1, 6};
         for (boolean aToB : all ? new boolean[]{true, false} : new boolean[]{true}) {
@@ -71,6 +84,25 @@ public class CapturedRavineGroupTests {
         }
         Main.LOGGER.info("[KhaosKorps measure] group tests on the captured ravine: {} generated ({}={})", tests.size(), PROPERTY, which);
         return tests;
+    }
+
+    /**
+     * A point given as "x,y,z" in the test server's world, as a block in the arena.
+     *
+     * @param world the point, three whole numbers separated by commas
+     * @param property the system property it came from, for the error message
+     * @return the point relative to the arena's corner
+     */
+    private static int[] arena(String world, String property) {
+        String[] parts = world.trim().split(",");
+        if (parts.length != 3) throw new IllegalArgumentException(property + " is \"" + world + "\"; it takes x,y,z in world coordinates");
+        int[] out = new int[3];
+        for (int i = 0; i < 3; i++) out[i] = (int) Math.floor(Double.parseDouble(parts[i].trim())) - CAPTURED_FROM[i];
+        if (out[0] < 0 || out[0] >= SIZE_X || out[2] < 0 || out[2] >= SIZE_Z) {
+            throw new IllegalArgumentException(property + " " + world + " lies outside the captured ravine (world x " + CAPTURED_FROM[0] + " to "
+                    + (CAPTURED_FROM[0] + SIZE_X - 1) + ", z " + CAPTURED_FROM[2] + " to " + (CAPTURED_FROM[2] + SIZE_Z - 1) + ")");
+        }
+        return out;
     }
 
     /**
@@ -118,6 +150,12 @@ public class CapturedRavineGroupTests {
                     + ",\"runTicks\":" + RUN_TICKS + "}");
             GroupRecorder recorder = new GroupRecorder(name, helper, owner, SIZE_X, SIZE_Y, SIZE_Z, setup.toString());
             for (int[] spawn : spawns) recorder.add(followingRecruit(helper, owner, spawn[0], spawn[1], spawn[2]));
+            // Extra followers at given world points (khaoskorps.groupExtra, "x,y,z;x,y,z"), to replay where recruits stood on the test server.
+            for (String point : System.getProperty("khaoskorps.groupExtra", "").split(";")) {
+                if (point.isBlank()) continue;
+                int[] at = arena(point, "khaoskorps.groupExtra");
+                recorder.add(followingRecruit(helper, owner, at[0], at[1], at[2]));
+            }
             helper.runAfterDelay(1, () -> assertFollowPreconditions(recorder.members().get(0).recruit));
             boolean[] ended = {false};
             // A recruit that hasn't ticked is in a chunk that isn't ticking entities: the run would count it stuck.

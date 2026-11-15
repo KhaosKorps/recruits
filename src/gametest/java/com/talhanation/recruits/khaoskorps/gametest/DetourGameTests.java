@@ -391,6 +391,42 @@ public class DetourGameTests {
         planRoundTheRavine(helper, "ORIGINAL");
     }
 
+    /**
+     * The planner reports its steps to its observer: planning round the ravine, it reports a direct
+     * check, at least one spot that became a waypoint, and the direct check that found the owner.
+     */
+    @GameTest(template = ARENA, timeoutTicks = 600)
+    public static void aDetourPlanReportsItsStepsToItsObserver(GameTestHelper helper) {
+        ravineArena(helper);
+        ServerPlayer owner = owner(helper, 24.5, 5, 33.5);
+        pin(helper, owner, 24.5, 5, 33.5);
+        AbstractRecruitEntity recruit = followingRecruit(helper, owner, 24, 5, 12);
+        PlanSteps steps = new PlanSteps(helper);
+        steps.watch(recruit);
+        boolean[] requested = {false};
+        helper.onEachTick(() -> {
+            if (!requested[0]) {
+                if (helper.getTick() < 2) return;
+                requested[0] = DetourRoutes.request(owner, recruit, FollowSettings.current());
+                if (!requested[0]) throw new GameTestAssertException("setup: the plan didn't start");
+                return;
+            }
+            DetourPlan plan = DetourRoutes.plan(owner.getUUID());
+            if (plan == null) throw new GameTestAssertException("the plan was dropped before it finished");
+            if (plan.status() == DetourPlan.Status.PLANNING) return;
+            PlanSteps.unwatch(recruit);
+            java.util.Map<String, Integer> counts = steps.counts();
+            if (plan.status() != DetourPlan.Status.FOUND) {
+                throw new GameTestAssertException("setup: no way round the ravine found; the observer saw " + counts);
+            }
+            if (counts.getOrDefault("direct", 0) < 1 || counts.getOrDefault("reached", 0) < 1 || counts.getOrDefault("direct-reached", 0) < 1) {
+                throw new GameTestAssertException("the observer missed steps of a found plan: it saw " + counts);
+            }
+            removeOwner(helper, owner);
+            helper.succeed();
+        });
+    }
+
     static final String DIRT_PATH_OFF = "khaoskorps_detour_dirt_path_off";
 
     @net.minecraft.gametest.framework.BeforeBatch(batch = DIRT_PATH_OFF)

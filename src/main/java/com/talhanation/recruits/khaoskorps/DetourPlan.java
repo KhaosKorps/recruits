@@ -28,6 +28,32 @@ public final class DetourPlan {
 
     public enum Status { PLANNING, FOUND, FAILED }
 
+    /**
+     * Watches every plan's steps, for the GameTest recorder and for diagnostics. Server thread. The events,
+     * with {@code from} the waypoint the side stands on and {@code spot} the spot concerned, or null:
+     * direct, direct-reached, direct-failed, direct-no-start: the check for a walkable path to the goal;
+     * unloaded, no-ground, near-drop: a candidate column with no spot to use, because its chunk isn't
+     * loaded, there is nothing to stand on within HEIGHT_RANGE of the waypoint's height, or every spot
+     * there is near a dangerous drop; visited, over-budget: a spot too near one already visited, or past
+     * the detour's limit; trying, reached, failed, no-start: the search to a candidate spot, and whether
+     * the spot became a waypoint; side-done: the side has no candidates or searches left.
+     */
+    public interface Observer {
+        void step(DetourPlan plan, int side, String event, BlockPos from, @Nullable BlockPos spot);
+    }
+
+    /** The observer every plan reports to; null, the default, and then reporting costs nothing. */
+    @Nullable
+    public static volatile Observer observer;
+
+    /** Why the last {@link #safeSpot} call found no spot: unloaded, no-ground or near-drop. */
+    private String spotProblem = "";
+
+    private void note(int side, String event, BlockPos from, @Nullable BlockPos spot) {
+        Observer watching = observer;
+        if (watching != null) watching.step(this, side, event, from, spot);
+    }
+
     /** No plan examines more searches than this, so a hopeless one ends. */
     static final int MAX_SEARCHES = 120;
     /** How far above and below a waypoint's height a candidate spot's ground is looked for. */
@@ -181,24 +207,29 @@ public final class DetourPlan {
                 this.pending = null;
                 if (this.pendingDirect) {
                     if (done.canReach()) {
+                        DetourPlan.this.note(this.sign, "direct-reached", this.last(), DetourPlan.this.goal);
                         List<BlockPos> found = new ArrayList<>(this.waypoints);
                         found.remove(0);
                         DetourPlan.this.finish(Status.FOUND, found);
                         return 0;
                     }
+                    DetourPlan.this.note(this.sign, "direct-failed", this.last(), DetourPlan.this.goal);
                     this.beginCandidates();
                 } else if (done.canReach()) {
                     BlockPos reached = this.pendingTarget;
+                    DetourPlan.this.note(this.sign, "reached", this.last(), reached);
                     this.travelled += Math.sqrt(horizontalDistanceSqr(this.last(), reached));
                     this.waypoints.add(reached);
                     DetourPlan.this.visited.add(new int[]{reached.getX(), reached.getZ()});
                     this.cursor = -1;
                 } else {
+                    DetourPlan.this.note(this.sign, "failed", this.last(), this.pendingTarget);
                     this.cursor++;
                 }
             }
             if (allowance <= 0) return 0;
             if (DetourPlan.this.searches >= MAX_SEARCHES) {
+                DetourPlan.this.note(this.sign, "side-done", this.last(), null);
                 this.alive = false;
                 return 0;
             }
@@ -206,31 +237,46 @@ public final class DetourPlan {
             if (this.cursor < 0) {
                 Path direct = this.search(from, DetourPlan.this.goal, DetourPlan.this.directRange);
                 if (direct != null) {
+                    DetourPlan.this.note(this.sign, "direct", from, DetourPlan.this.goal);
                     this.pending = direct;
                     this.pendingDirect = true;
                     return 1;
                 }
+                DetourPlan.this.note(this.sign, "direct-no-start", from, DetourPlan.this.goal);
                 this.beginCandidates();
             }
             while (this.cursor < this.candidates.size()) {
                 DetourGeometry.Offset offset = this.candidates.get(this.cursor);
                 BlockPos spot = DetourPlan.this.safeSpot(from.getX() + offset.dx(), from.getY(), from.getZ() + offset.dz());
-                if (spot == null
-                        || DetourGeometry.nearAny(spot.getX(), spot.getZ(), DetourPlan.this.visited, DetourPlan.this.step * 3 / 8)
-                        || this.travelled + Math.sqrt(horizontalDistanceSqr(from, spot)) > DetourPlan.this.budget) {
+                if (spot == null) {
+                    DetourPlan.this.note(this.sign, DetourPlan.this.spotProblem, from,
+                            new BlockPos(from.getX() + offset.dx(), from.getY(), from.getZ() + offset.dz()));
+                    this.cursor++;
+                    continue;
+                }
+                if (DetourGeometry.nearAny(spot.getX(), spot.getZ(), DetourPlan.this.visited, DetourPlan.this.step * 3 / 8)) {
+                    DetourPlan.this.note(this.sign, "visited", from, spot);
+                    this.cursor++;
+                    continue;
+                }
+                if (this.travelled + Math.sqrt(horizontalDistanceSqr(from, spot)) > DetourPlan.this.budget) {
+                    DetourPlan.this.note(this.sign, "over-budget", from, spot);
                     this.cursor++;
                     continue;
                 }
                 Path toSpot = this.search(from, spot, DetourPlan.this.step + 8);
                 if (toSpot == null) {
+                    DetourPlan.this.note(this.sign, "no-start", from, spot);
                     this.cursor++;
                     continue;
                 }
+                DetourPlan.this.note(this.sign, "trying", from, spot);
                 this.pending = toSpot;
                 this.pendingDirect = false;
                 this.pendingTarget = spot;
                 return 1;
             }
+            DetourPlan.this.note(this.sign, "side-done", from, null);
             this.alive = false;
             return 0;
         }
@@ -255,20 +301,29 @@ public final class DetourPlan {
 
     /**
      * A spot a recruit can stand at in column (x, z), within HEIGHT_RANGE of {@code nearY}, nearest
-     * that height first, in a loaded chunk, with no dangerous drop within the margin; null if none.
+     * that height first, in a loaded chunk, with no dangerous drop within the margin; null if none, with the
+     * reason kept for the observer.
      */
     @Nullable
     BlockPos safeSpot(int x, int nearY, int z) {
-        if (!this.level.hasChunkAt(new BlockPos(x, nearY, z))) return null;
+        if (!this.level.hasChunkAt(new BlockPos(x, nearY, z))) {
+            this.spotProblem = "unloaded";
+            return null;
+        }
+        boolean nearDrop = false;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int offset = 0; offset <= HEIGHT_RANGE; offset++) {
             for (int sign : offset == 0 ? new int[]{1} : new int[]{1, -1}) {
                 int y = nearY + sign * offset;
                 if (!this.standable(pos.set(x, y, z))) continue;
-                if (EdgeProbe.distanceToDangerousDrop(this.level, x, y, z, this.maxFall, this.clearance, null) != EdgeProbe.NONE) continue;
+                if (EdgeProbe.distanceToDangerousDrop(this.level, x, y, z, this.maxFall, this.clearance, null) != EdgeProbe.NONE) {
+                    nearDrop = true;
+                    continue;
+                }
                 return pos.immutable();
             }
         }
+        this.spotProblem = nearDrop ? "near-drop" : "no-ground";
         return null;
     }
 
